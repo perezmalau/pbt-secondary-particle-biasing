@@ -1,0 +1,15 @@
+/run/initialize
+
+# Default settings:
+/gps/particle proton
+/gps/position -30 0 -20 cm
+/gps/pos/type Plane
+/gps/pos/shape Circle
+/gps/pos/radius 2 mm
+/gps/direction 1 0 0
+/gps/energy 120 MeV
+
+# Run settings:
+/analysis/setFileName ../Output/biasing_test_1E6
+/run/printProgress 100000
+/run/beamOn 1000000
