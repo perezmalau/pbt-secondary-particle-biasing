@@ -29,7 +29,7 @@
 //
 
 #include "FTFP_BERT.hh"
-#include "QGSP_BIC_HP.hh"
+#include "QGSP_BIC.hh"
 #include "G4EmStandardPhysics_option4.hh"
 #include "ActionInitialization.hh"
 #include "DetectorConstruction.hh"
@@ -120,7 +120,7 @@ int main(int argc, char** argv)
   runManager->SetUserInitialization(detector);
   // -- Select a physics list:
   //FTFP_BERT* physicsList = new FTFP_BERT;
-  QGSP_BIC_HP* physicsList = new QGSP_BIC_HP;
+  QGSP_BIC* physicsList = new QGSP_BIC;
   physicsList->ReplacePhysics(new G4EmStandardPhysics_option4());
 
   // -- and augment it with biasing facilities:
