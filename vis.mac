@@ -21,7 +21,7 @@
 #/vis/viewer/set/style wireframe
 #
 # Draw coordinate axes:
-#/vis/scene/add/axes 0 0 0 10 cm white true
+/vis/scene/add/axes 0 0 0 10 cm white true
 #/vis/viewer/set/auxiliaryEdge 1
 #
 # Draw smooth trajectories at end of event, showing trajectory points
@@ -38,7 +38,8 @@
 # To draw only gammas:
 /vis/filtering/trajectories/create/particleFilter
 /vis/filtering/trajectories/particleFilter-0/add gamma
-#/vis/filtering/trajectories/particleFilter-0/add proton
+/vis/filtering/trajectories/particleFilter-0/add proton
+/vis/filtering/trajectories/particleFilter-0/add neutron
 #
 # To invert the above, drawing all particles except gammas,
 # keep the above two lines but also add:
