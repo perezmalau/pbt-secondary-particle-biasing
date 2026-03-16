@@ -56,41 +56,50 @@ CameraDirectionBiasingOperation::ApplyFinalStateBiasing(
     for (G4int i = 0; i < nSecondaries; ++i)
     {
         G4Track* secondary = processFinalState->GetSecondary(i);
+        auto particleName = secondary->GetParticleDefinition()->GetParticleName();
 
-        if (secondary->GetDefinition() != G4Gamma::Definition()) continue;
-
-        // Direction from production point toward camera center
-        const G4ThreeVector& prodPos  = track->GetPosition();
-        // Four corners of the camera front face
-        G4double xc = fCameraCenter.x();
-        G4double yc = fCameraCenter.y();
-        G4double h  = fCameraHalfXY;
-        G4double z  = 0; // Camera is positioned such that the front face is at z=0
-        std::array<G4ThreeVector, 4> corners = {{
-            G4ThreeVector(xc + h, yc + h, z),
-            G4ThreeVector(xc + h, yc - h, z),
-            G4ThreeVector(xc - h, yc + h, z),
-            G4ThreeVector(xc - h, yc - h, z)
-        }};
-
-        // Direction from production point to camera centre
-        G4ThreeVector toCenter = (G4ThreeVector(xc, yc, z) - prodPos).unit();
-
-        // Half-angle = largest angle between toCenter and any corner direction
-        G4double halfAngle = 0.0;
-        for (const auto& corner : corners) {
-            G4ThreeVector toCorner = (corner - prodPos).unit();
-            G4double angle = std::acos(std::min(1.0, toCenter.dot(toCorner)));
-            halfAngle = std::max(halfAngle, angle);
+        // Kill neutrons
+        if (particleName == "neutron")
+        {
+            secondary->SetTrackStatus(fStopAndKill);
+            continue;
         }
 
-        G4double cameraSolidAngle = 2.0 * CLHEP::pi * (1.0 - std::cos(halfAngle));
+        // Bias gamma direction
+        if (particleName == "gamma") {
+            // Direction from production point toward camera center
+            const G4ThreeVector& prodPos  = track->GetPosition();
+            // Four corners of the camera front face
+            G4double xc = fCameraCenter.x();
+            G4double yc = fCameraCenter.y();
+            G4double h  = fCameraHalfXY;
+            G4double z  = 0; // Camera is positioned such that the front face is at z=0
+            std::array<G4ThreeVector, 4> corners = {{
+                G4ThreeVector(xc + h, yc + h, z),
+                G4ThreeVector(xc + h, yc - h, z),
+                G4ThreeVector(xc - h, yc + h, z),
+                G4ThreeVector(xc - h, yc - h, z)
+            }};
 
-        G4ThreeVector biasedDir   = SampleDirectionInCone(toCenter, halfAngle);
-        G4double weightCorrection = cameraSolidAngle / (4.0 * CLHEP::pi);
+            // Direction from production point to camera centre
+            G4ThreeVector toCenter = (G4ThreeVector(xc, yc, z) - prodPos).unit();
 
-        secondary->SetMomentumDirection(biasedDir);
-        secondary->SetWeight(secondary->GetWeight() * weightCorrection);
+            // Half-angle = largest angle between toCenter and any corner direction
+            G4double halfAngle = 0.0;
+            for (const auto& corner : corners) {
+                G4ThreeVector toCorner = (corner - prodPos).unit();
+                G4double angle = std::acos(std::min(1.0, toCenter.dot(toCorner)));
+                halfAngle = std::max(halfAngle, angle);
+            }
+
+            G4double cameraSolidAngle = 2.0 * CLHEP::pi * (1.0 - std::cos(halfAngle));
+
+            G4ThreeVector biasedDir   = SampleDirectionInCone(toCenter, halfAngle);
+            G4double weightCorrection = cameraSolidAngle / (4.0 * CLHEP::pi);
+
+            secondary->SetMomentumDirection(biasedDir);
+            secondary->SetWeight(secondary->GetWeight() * weightCorrection);
+        }
     }
 
     return processFinalState;
