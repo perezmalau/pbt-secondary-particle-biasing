@@ -60,21 +60,20 @@ G4bool HexitecSD::ProcessHits(G4Step *step, G4TouchableHistory*)
     G4String proc = step->GetPostStepPoint()->GetProcessDefinedStep()->GetProcessName();
     if (proc!="CoupledTransportation" and proc!="Rayl") {
         G4int parentID = step->GetTrack()->GetParentID();
+        G4int trackID = step->GetTrack()->GetTrackID();
         G4String particle = step->GetTrack()->GetParticleDefinition()->GetParticleName();
         G4double edep = step->GetTotalEnergyDeposit();
+        G4double epre = step->GetPreStepPoint()->GetKineticEnergy();
+        G4double epost = step->GetPostStepPoint()->GetKineticEnergy();
+        G4double ediff = epre - epost;
         G4int lineNumber = step->GetPreStepPoint()->GetTouchable()->GetReplicaNumber(1);
         G4int columnNumber = step->GetPreStepPoint()->GetTouchable()->GetReplicaNumber(0);
         G4int copyNo = step->GetPreStepPoint()->GetTouchable()->GetCopyNumber(3);
         G4ThreeVector pos = step->GetPostStepPoint()->GetPosition();
+        G4double init_ene = step->GetTrack()->GetVertexKineticEnergy();
         G4double weight = step->GetTrack()->GetWeight();
         auto *hit = new HexitecHit();
-        if (parentID == 1 and particle=="gamma"){
-            hit->Add(copyNo, parentID, edep, lineNumber, columnNumber, pos, proc, particle, weight);
-        }
-        else{
-            proc = "";
-            hit->Add(copyNo, parentID, edep, lineNumber, columnNumber, pos, proc, particle, weight);
-        }
+        hit->Add(copyNo, parentID, trackID, edep, lineNumber, columnNumber, pos, init_ene, ediff, particle, weight);
         fHitsCollection->insert(hit);
     }
     return true;

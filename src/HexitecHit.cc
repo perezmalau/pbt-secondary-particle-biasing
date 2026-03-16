@@ -40,13 +40,15 @@ HexitecHit::HexitecHit() : G4VHit(),
                            fCopyNo(-1),
                            fEdep(0.),
                            fParentID(0),
+                           fTrackID(0),
                            fParticleName(""),
                            fInteractionPos(0),
                            fLine(0),
                            fCol(0),
-                           fProcess(""),
-                           fWeight(0.)
-{}
+                           fInitialEnergy(0.),
+                           fEdiff(0.),
+                           fWeight(0.) {
+}
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -55,31 +57,33 @@ HexitecHit::~HexitecHit() = default;
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 HexitecHit::HexitecHit(const HexitecHit &right)
-        : G4VHit()
-{
-    fCopyNo      = right.fCopyNo;
-    fEdep        = right.fEdep;
-    fParentID     = right.fParentID;
+    : G4VHit() {
+    fCopyNo = right.fCopyNo;
+    fEdep = right.fEdep;
+    fParentID = right.fParentID;
+    fTrackID = right.fTrackID;
     fParticleName = right.fParticleName;
     fInteractionPos = right.fInteractionPos;
-    fLine		 = right.fLine;
-    fCol		 = right.fCol;
-    fProcess = right.fProcess;
+    fLine = right.fLine;
+    fCol = right.fCol;
+    fInitialEnergy= right.fInitialEnergy;
+    fEdiff = right.fEdiff;
     fWeight = right.fWeight;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-const HexitecHit &HexitecHit::operator=(const HexitecHit &right)
-{
-    fCopyNo      = right.fCopyNo;
-    fEdep        = right.fEdep;
-    fParentID     = right.fParentID;
+const HexitecHit &HexitecHit::operator=(const HexitecHit &right) {
+    fCopyNo = right.fCopyNo;
+    fEdep = right.fEdep;
+    fParentID = right.fParentID;
+    fTrackID = right.fTrackID;
     fParticleName = right.fParticleName;
     fInteractionPos = right.fInteractionPos;
-    fLine		 = right.fLine;
-    fCol		 = right.fCol;
-    fProcess = right.fProcess;
+    fLine = right.fLine;
+    fCol = right.fCol;
+    fInitialEnergy = right.fInitialEnergy;
+    fEdiff = right.fEdiff;
     fWeight = right.fWeight;
 
     return *this;
@@ -87,9 +91,6 @@ const HexitecHit &HexitecHit::operator=(const HexitecHit &right)
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-G4int HexitecHit::operator==(const HexitecHit &right) const
-{
+G4int HexitecHit::operator==(const HexitecHit &right) const {
     return (this == &right) ? 1 : 0;
 }
-
-

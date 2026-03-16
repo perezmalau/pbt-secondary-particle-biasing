@@ -77,119 +77,82 @@ void EventAction::EndOfEventAction(const G4Event *event)
     auto sensorHC = GetHitsCollection(fSensorHCID, event);
     G4int nSensor = sensorHC->entries();
 
-    bool copiesHit[3] = {false, false, false};
+    // Define pixel maps - the realistic detector information
+    std::map<std::pair<int,int>, G4double> pixelMaps[3];
 
+    // Define a gamma record with the true gamma information (set of sensor hit and true pos and process info)
+    struct GammaRecord {
+        // The actual set of hits in the sensors
+        std::set<G4int> sensorsHit;
+        // The position, process and weight are recorded as true information
+        std::map<G4int, std::vector<std::tuple<G4ThreeVector, G4double, G4double, G4double >>> trueInfo;
+    };
+
+    std::map<G4int, GammaRecord> gammaRecords; // key: trackID of the gamma
+
+    // Loop through all hits in the event, record the relevant information
     for (G4int i = 0; i < nSensor; i++) {
-        auto hit = (*sensorHC)[i];
-        G4int copyNo = hit->GetCopyNo();
-        // Mark the copy number as hit
-        if (copyNo >= 0 && copyNo < 3) {
-            copiesHit[copyNo] = true;
-            // If all 3 copies have been hit, break early
-            if (copiesHit[0] && copiesHit[1] && copiesHit[2]) {
-                break;
+        auto hit      = (*sensorHC)[i];
+        G4int copyNo  = hit->GetCopyNo();
+        // Accumulate pixel energy
+        G4int line = hit->GetLineNumber();
+        G4int col  = hit->GetColNumber();
+        pixelMaps[copyNo][{line, col}] += hit->GetEdep();
+
+        // Only fill true info for primary gammas
+        G4int    parentID = hit->GetParentID();
+        G4String particle = hit->GetParticleName();
+        if (particle == "gamma" and parentID == 1) {
+            G4int gammaTrackID = hit->GetTrackID();
+            auto &record = gammaRecords[gammaTrackID];
+            record.sensorsHit.insert(copyNo);
+            record.trueInfo[copyNo].push_back({ hit->GetInteractionPos(), hit->GetInitialEnergy(), hit->GetEnergyDiff(), hit->GetWeight()});
+        }
+    }
+
+    auto analysisManager = G4AnalysisManager::Instance();
+
+    // Fill true information based on trackID coincidences
+    for (auto &[gammaTrackID, record] : gammaRecords) {
+        // Require hits in all 3 sensors
+        if (record.sensorsHit.size() < 3) continue;
+        // Fill "true" interaction ntuples (ntuples 0, 1, 2 per sensor)
+        for (G4int sensorIdx = 0; sensorIdx < 3; sensorIdx++) {
+            auto it = record.trueInfo.find(sensorIdx);
+            if (it == record.trueInfo.end()) continue;
+            for (const auto &[pos, ene, ediff, weight] : record.trueInfo[sensorIdx]) {
+                analysisManager->FillNtupleIColumn(sensorIdx, 0, evtID);
+                analysisManager->FillNtupleIColumn(sensorIdx, 1, gammaTrackID);
+                analysisManager->FillNtupleDColumn(sensorIdx, 2, pos.x()/CLHEP::cm);
+                analysisManager->FillNtupleDColumn(sensorIdx, 3, pos.y()/CLHEP::cm);
+                analysisManager->FillNtupleDColumn(sensorIdx, 4, pos.z()/CLHEP::cm);
+                analysisManager->FillNtupleDColumn(sensorIdx, 5, ene);
+                analysisManager->FillNtupleDColumn(sensorIdx, 6, ediff);
+                //analysisManager->FillNtupleDColumn(sensorIdx, 7, weight);
+                analysisManager->AddNtupleRow(sensorIdx);
             }
         }
     }
 
-    if (copiesHit[0] && copiesHit[1] && copiesHit[2]) {
-        std::map<std::pair<int, int>, G4double> pixelEnergyMap1;
-        std::map<std::pair<int, int>, G4double> pixelEnergyMap2;
-        std::map<std::pair<int, int>, G4double> pixelEnergyMap3;
-        for (G4int i = 0; i < nSensor; i++) {
-            auto hit = (*sensorHC)[i];
-            G4int parentID = hit->GetParentID();
-            G4String particle = hit->GetParticleName();
-            G4int copyNo = hit->GetCopyNo();
-            G4ThreeVector pos = hit->GetInteractionPos();
-            G4String proc = hit->GetProcess();
-            auto analysisManager = G4AnalysisManager::Instance();
-            // Sensor 1 hits
-            if (copyNo == 0) {
-                if (parentID == 1 and particle=="gamma") {
-                    analysisManager->FillNtupleIColumn(0, 0, evtID);
-                    analysisManager->FillNtupleDColumn(0, 1, pos.x()/10);
-                    analysisManager->FillNtupleDColumn(0, 2, pos.y()/10);
-                    analysisManager->FillNtupleDColumn(0, 3, pos.z()/10);
-                    analysisManager->FillNtupleSColumn(0, 4, proc);
-                    analysisManager->AddNtupleRow(0);
-                    //G4cout << "Gamma created in event " << evtID << " hit Sensor1 and underwent " << proc << G4endl;
-                }
-                G4int line = hit->GetLineNumber();
-                G4int col = hit->GetColNumber();
-                auto pixelCoords = std::make_pair(line, col);
-                pixelEnergyMap1[pixelCoords] += hit->GetEdep();
-            }
-            // Sensor 2 hits
-            if (copyNo == 1) {
-                if (parentID == 1 and particle=="gamma") {
-                    analysisManager->FillNtupleIColumn(1, 0, evtID);
-                    analysisManager->FillNtupleDColumn(1, 1, pos.x()/10);
-                    analysisManager->FillNtupleDColumn(1, 2, pos.y()/10);
-                    analysisManager->FillNtupleDColumn(1, 3, pos.z()/10);
-                    analysisManager->FillNtupleSColumn(1, 4, proc);
-                    analysisManager->AddNtupleRow(1);
-                    //G4cout << "Gamma created in event " << evtID << " hit Sensor2 and underwent " << proc << G4endl;
-                }
-                G4int line = hit->GetLineNumber();
-                G4int col = hit->GetColNumber();
-                auto pixelCoords = std::make_pair(line, col);
-                pixelEnergyMap2[pixelCoords] += hit->GetEdep();
-            }
-            // Sensor 3 hits
-            if (copyNo == 2) {
-                if (parentID == 1 and particle=="gamma") {
-                    analysisManager->FillNtupleIColumn(2, 0, evtID);
-                    analysisManager->FillNtupleDColumn(2, 1, pos.x()/10);
-                    analysisManager->FillNtupleDColumn(2, 2, pos.y()/10);
-                    analysisManager->FillNtupleDColumn(2, 3, pos.z()/10);
-                    analysisManager->FillNtupleSColumn(2, 4, proc);
-                    analysisManager->AddNtupleRow(2);
-                    //G4cout << "Gamma created in event " << evtID << " hit Sensor3 and underwent " << proc << G4endl;
-                }
-                G4int line = hit->GetLineNumber();
-                G4int col = hit->GetColNumber();
-                auto pixelCoords = std::make_pair(line, col);
-                pixelEnergyMap3[pixelCoords] += hit->GetEdep();
-            }
-        }
-        // Fill measured information
-        auto analysisManager = G4AnalysisManager::Instance();
-        // Fill Ntuples for pixel map 1, 2 and 3
-        for (const auto &entry: pixelEnergyMap1) {
-            G4double etot = entry.second;
-            G4int line = entry.first.first;
-            G4int col = entry.first.second;
-            if (etot > 0.003) {
-                analysisManager->FillNtupleIColumn(3, 0, evtID);
-                analysisManager->FillNtupleIColumn(3, 1, line);
-                analysisManager->FillNtupleIColumn(3, 2, col);
-                analysisManager->FillNtupleDColumn(3, 3, etot);
-                analysisManager->AddNtupleRow(3);
-            }
-        }
-        for (const auto &entry: pixelEnergyMap2) {
-            G4double etot = entry.second;
-            G4int line = entry.first.first;
-            G4int col = entry.first.second;
-            if (etot > 0.003) {
-                analysisManager->FillNtupleIColumn(4, 0, evtID);
-                analysisManager->FillNtupleIColumn(4, 1, line);
-                analysisManager->FillNtupleIColumn(4, 2, col);
-                analysisManager->FillNtupleDColumn(4, 3, etot);
-                analysisManager->AddNtupleRow(4);
-            }
-        }
-        for (const auto &entry: pixelEnergyMap3) {
-            G4double etot = entry.second;
-            G4int line = entry.first.first;
-            G4int col = entry.first.second;
-            if (etot > 0.003) {
-                analysisManager->FillNtupleIColumn(5, 0, evtID);
-                analysisManager->FillNtupleIColumn(5, 1, line);
-                analysisManager->FillNtupleIColumn(5, 2, col);
-                analysisManager->FillNtupleDColumn(5, 3, etot);
-                analysisManager->AddNtupleRow(5);
+    // Fill realistic detector information based on event coincidences and a detector threshold at 3 keV
+    constexpr G4double kEnergyThreshold = 0.003; // MeV
+
+    // Realistic coincidence: all 3 pixel maps are non-empty
+    bool realisticCoincidence = !pixelMaps[0].empty() &&
+                                !pixelMaps[1].empty() &&
+                                !pixelMaps[2].empty();
+
+    // Fill the interaction ntuples (ntuples 3, 4, 5 per sensor)
+    if (realisticCoincidence) {
+        for (G4int sensorIdx = 0; sensorIdx < 3; sensorIdx++) {
+            G4int ntupleIdx = 3 + sensorIdx;
+            for (const auto &[coords, etot] : pixelMaps[sensorIdx]) {
+                if (etot <= kEnergyThreshold) continue;
+                analysisManager->FillNtupleIColumn(ntupleIdx, 0, evtID);
+                analysisManager->FillNtupleIColumn(ntupleIdx, 1, coords.first);  // line
+                analysisManager->FillNtupleIColumn(ntupleIdx, 2, coords.second); // col
+                analysisManager->FillNtupleDColumn(ntupleIdx, 3, etot);
+                analysisManager->AddNtupleRow(ntupleIdx);
             }
         }
     }
