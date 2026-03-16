@@ -58,51 +58,60 @@ RunAction::RunAction()
   	// create Ntuple for ideal gamma info in scatterer1, id = 0
 	analysisManager->CreateNtuple("G4S1TrueGammaInfo", "Sensor1 ideal hits");
 	analysisManager->CreateNtupleIColumn("EventID");
-	analysisManager->CreateNtupleDColumn("PosX");
-	analysisManager->CreateNtupleDColumn("PosY");
-    analysisManager->CreateNtupleDColumn("PosZ");
-    analysisManager->CreateNtupleSColumn("Process");
+	analysisManager->CreateNtupleIColumn("TrackID");
+	analysisManager->CreateNtupleDColumn("Xpos");
+	analysisManager->CreateNtupleDColumn("Ypos");
+    analysisManager->CreateNtupleDColumn("Zpos");
+    analysisManager->CreateNtupleDColumn("InitEnergy");
+	analysisManager->CreateNtupleDColumn("Etot");
+	//analysisManager->CreateNtupleDColumn("Weight");
 	analysisManager->FinishNtuple();
 
   	// create Ntuple for ideal gamma info in scatterer2, id = 1
 	analysisManager->CreateNtuple("G4S2TrueGammaInfo", "Sensor2 ideal hits");
 	analysisManager->CreateNtupleIColumn("EventID");
-    analysisManager->CreateNtupleDColumn("PosX");
-    analysisManager->CreateNtupleDColumn("PosY");
-    analysisManager->CreateNtupleDColumn("PosZ");
-    analysisManager->CreateNtupleSColumn("Process");
+	analysisManager->CreateNtupleIColumn("TrackID");
+	analysisManager->CreateNtupleDColumn("Xpos");
+	analysisManager->CreateNtupleDColumn("Ypos");
+	analysisManager->CreateNtupleDColumn("Zpos");
+	analysisManager->CreateNtupleDColumn("InitEnergy");
+	analysisManager->CreateNtupleDColumn("Etot");
+	//analysisManager->CreateNtupleDColumn("Weight");
 	analysisManager->FinishNtuple();
 
     // create Ntuple for ideal gamma info in scatterer3, id = 2
     analysisManager->CreateNtuple("G4S3TrueGammaInfo", "Sensor3 ideal hits");
-    analysisManager->CreateNtupleIColumn("EventID");
-    analysisManager->CreateNtupleDColumn("PosX");
-    analysisManager->CreateNtupleDColumn("PosY");
-    analysisManager->CreateNtupleDColumn("PosZ");
-    analysisManager->CreateNtupleSColumn("Process");
+	analysisManager->CreateNtupleIColumn("EventID");
+	analysisManager->CreateNtupleIColumn("TrackID");
+	analysisManager->CreateNtupleDColumn("Xpos");
+	analysisManager->CreateNtupleDColumn("Ypos");
+	analysisManager->CreateNtupleDColumn("Zpos");
+	analysisManager->CreateNtupleDColumn("InitEnergy");
+	analysisManager->CreateNtupleDColumn("Etot");
+	//analysisManager->CreateNtupleDColumn("Weight");
     analysisManager->FinishNtuple();
 
     // create Ntuple for measured sensor1 hits, id = 3
     analysisManager->CreateNtuple("G4Sensor1Hits", "Sensor1 hits");
     analysisManager->CreateNtupleIColumn("EventID");
-    analysisManager->CreateNtupleIColumn("Xpix");
-    analysisManager->CreateNtupleIColumn("Ypix");
+    analysisManager->CreateNtupleIColumn("Line");
+    analysisManager->CreateNtupleIColumn("Col");
     analysisManager->CreateNtupleDColumn("Edep");
     analysisManager->FinishNtuple();
 
     // create Ntuple for measured sensor2 hits, id = 4
     analysisManager->CreateNtuple("G4Sensor2Hits", "Sensor2 hits");
     analysisManager->CreateNtupleIColumn("EventID");
-    analysisManager->CreateNtupleIColumn("Xpix");
-    analysisManager->CreateNtupleIColumn("Ypix");
+    analysisManager->CreateNtupleIColumn("Line");
+    analysisManager->CreateNtupleIColumn("Col");
     analysisManager->CreateNtupleDColumn("Edep");
     analysisManager->FinishNtuple();
 
     // create Ntuple for measured sensor3 hits, id = 5
     analysisManager->CreateNtuple("G4Sensor3Hits", "Sensor3 hits");
     analysisManager->CreateNtupleIColumn("EventID");
-    analysisManager->CreateNtupleIColumn("Xpix");
-    analysisManager->CreateNtupleIColumn("Ypix");
+    analysisManager->CreateNtupleIColumn("Line");
+    analysisManager->CreateNtupleIColumn("Col");
     analysisManager->CreateNtupleDColumn("Edep");
     analysisManager->FinishNtuple();
 
