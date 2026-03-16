@@ -103,6 +103,18 @@ int main(int argc, char** argv)
     ui = new G4UIExecutive(argc, argv);
   }
 
+  // Choose the Random engine
+  //
+  CLHEP::HepRandom::setTheEngine(new CLHEP::RanecuEngine());
+  auto seed = (G4int) time(nullptr);
+  // Possibility to set an offset to random number via environment variable "JOB_ID"
+  char *jobID = getenv("JOB_ID");
+  if (jobID != nullptr)
+    seed += atoi(jobID) * 4852234 * G4UniformRand();
+  G4cout << "Seed:" << seed << G4endl;
+  G4Random::setTheSeed(seed);
+
+
   // -- Construct the run manager : MT or sequential one
 #ifdef G4MULTITHREADED
   auto *runManager = new G4MTRunManager;
