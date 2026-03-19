@@ -1,0 +1,681 @@
+"""
+Last modified on Thu 19 Mar 2026
+@author: Maria Perez-Lara, University College London, University of Warwick
+
+Purpose: Read out 2 stage and 3 stage compton cam data,
+taking into account different geometries for scatterer and absorber
+"""
+
+import pandas as pd
+import numpy as np
+import progressbar
+import random
+import time
+import uproot4
+from sklearn.cluster import DBSCAN
+# import sys
+
+# ------------------------------------------------------
+# ------------ PREPROCESSING FUNCTIONS -----------------
+# ------------------------------------------------------
+
+# careful after implementing this!! Works for the detector that is facing the source (absorber)
+# As the scatterer is backwards, x axis is mirrored, then change the flip flag to true
+# Needs N pixels and pitch of the detector in mm
+# Default values based on 3x3 HEXITEC detector array (40x40 pixels and 500 micron pitch each)
+def pixel_to_coordinate(i, j, Npix, pitch, flip=False):
+    if flip:
+        x = pitch * ((Npix-1)/2 - i)
+    else:
+        x = pitch * (i - (Npix-1)/2)
+    y = pitch * (j - (Npix-1)/2)
+    return x, y
+
+# Perform a DBSCAN clustering algorithm in a given hexitec file
+def cluster_df(df_hex, on='EventID'):
+    df = df_hex.copy()
+    scale = np.array([0.5, 0.5, 2.0])
+    X = scale * df[['Xpix', 'Ypix', on]].values
+    scan = DBSCAN(eps=1.5, min_samples=1).fit(X)
+    df['ClusterID'] = scan.labels_
+    df_clustered = []
+    groups = df.groupby('ClusterID')
+    # print("Clustering...")
+    # bar = progressbar.ProgressBar(maxval=len(groups), widgets=[progressbar.Bar('=', '[', ']'), ' ',
+    #                                                            progressbar.Percentage()])
+    # bar.start()
+
+    for i, (_, group) in enumerate(groups):
+        Edep_group = group['Edep'].sum()
+        weighted_coords = np.average(group[['Xpix', 'Ypix']].values, axis=0, weights=group['Edep'])
+        Xpix_cm, Ypix_cm = np.round(weighted_coords).astype(int)
+        group['Xcm'] = Xpix_cm
+        group['Ycm'] = Ypix_cm
+        group['Etot'] = Edep_group
+        df_clustered.append(group)
+    #     bar.update(i + 1)
+    # bar.finish()
+    df_clustered = pd.concat(df_clustered, ignore_index=True)
+    # df_clustered = df_clustered.drop(columns=['ClusterID'])
+    return df_clustered
+
+
+# Filter only events that show E1+E2 = Esource
+def energy_filter_mono(df1, df2, Esource, epsilon, category='EventID'):
+    df1_first = df1.groupby(category).first()
+    df2_first = df2.groupby(category).first()
+    E0 = df1_first['Etot'] + df2_first['Etot']
+    isPrompt = ((Esource - epsilon <= E0) & (E0 <= Esource + epsilon))
+    useful_events = isPrompt[isPrompt].index.values
+    filtered_hex1 = df1[df1[category].isin(useful_events)]
+    filtered_hex2 = df2[df2[category].isin(useful_events)]
+    return filtered_hex1, filtered_hex2
+
+
+# Energy resolution function, returns resolution as a percentage of energy
+def resolution(a, b, E):
+    return a + (b*np.sqrt(E))
+
+# Blurring function to account for energy resolution in geant4 data
+# For S017: a=-4.348, b=1.097
+#For S018: a=-2.836, b=0.853
+def blur_energies(df_merged):
+    dfb = df_merged.copy()
+    energies1 = dfb['Etot_1'].values*1000
+    resolutions1 = resolution(-4.348, 1.097, energies1)
+    resolutions1[resolutions1 < 0] = 0
+    blurred_energies1 = np.random.normal(energies1, resolutions1/2.355)
+    energies2 = dfb['Etot_2'].values*1000
+    resolutions2 = resolution(-2.836, 0.853, energies2)
+    resolutions2[resolutions2 < 0] = 0
+    blurred_energies2 = np.random.normal(energies2, resolutions2/2.355)
+    dfb['Etot_1'] = blurred_energies1/1000
+    dfb['Etot_2'] = blurred_energies2/ 1000
+    return dfb
+
+# Only keep events that have cluster sizes of less than pixlimit and only show a single cluster per event
+def filter_by_clusters(df, pixlimit=10, groupby='EventID'):
+    cluster_sizes = df.groupby(groupby)['ClusterID'].count()
+    nclusters = df.groupby(groupby)['ClusterID'].nunique()
+    eventInfo = pd.DataFrame({'ClusterSize': cluster_sizes, 'Nclusters': nclusters})
+    keeper_events = eventInfo[(eventInfo['ClusterSize'] < pixlimit) & (eventInfo['Nclusters'] == 1)].index
+    df_filt = df[df[groupby].isin(keeper_events)]
+    df_first = df_filt.groupby('EventID').first()[['Xcm', 'Ycm', 'Etot']]
+    return df_first
+
+
+# ------------------------------------------------------
+# ------------ 3-STAGE CAMERA FUNCTIONS ----------------
+# ------------------------------------------------------
+
+# For ideal data
+
+# Remove events with more than one hit in ideal data
+def filter_single_hits(df):   # Discard multiple interactions in a single laye
+    counts = df[['EventID', 'TrackID']].value_counts()
+    single = counts[counts == 1].index
+    return df.set_index(['EventID', 'TrackID']).loc[single].reset_index()
+
+# Label an event as genuine double/triple coincidence or faulty
+# A faulty event in a 3-stage coincidence could be due to backscatter (e.g. compt-phot-compt)
+# A faulty event in a 2-stage coincidence could be due to double compton or backscatter (phot-compt)
+def classify_event(row):
+    has_1 = pd.notna(row.get('Xpos_1'))
+    has_2 = pd.notna(row.get('Xpos_2'))
+    has_3 = pd.notna(row.get('Xpos_3'))
+
+    stages_hit = has_1 + has_2 + has_3
+
+    if stages_hit == 3:
+        # If the first stages show absorption, there was a backscatter, not useful
+        if row['Process_1'] == 'phot' or row['Process_2'] == 'phot':
+            return 'Faulty'
+        return 'TripleCoinc'
+
+    elif stages_hit == 2:
+        if has_1 and has_2:
+            valid = row['Process_1'] == 'compt' and row['Process_2'] == 'phot'
+        elif has_1 and has_3:
+            valid = row['Process_1'] == 'compt' and row['Process_3'] == 'phot'
+        elif has_2 and has_3:
+            valid = row['Process_2'] == 'compt' and row['Process_3'] == 'phot'
+        return 'DoubleCoinc' if valid else 'Faulty'
+
+    return 'Faulty'  # single stage, shouldn't appear but just in case
+
+# Obtain dataframe from ideal information from root file
+def get_real_dataframe(root_filename, tree_name):
+    with uproot4.open(root_filename) as f:
+        tree = f[tree_name]
+        df = tree.arrays(['EventID', 'TrackID', 'Xpos', 'Ypos', 'Zpos', 'Etot', 'Process'], library="pd")
+        df['Process'] = df['Process'].astype(str)
+        return df
+
+# Merge ideal information from all 3 stages in a single dataframe using only single hit events
+# Classifies coincidences as double, triple or faulty
+def get_true_information(root_filename, drop_faulty=True, drop_double_coincidences=True):
+    df1 = get_real_dataframe(root_filename, "G4S1TrueGammaInfo")
+    df2 = get_real_dataframe(root_filename, "G4S2TrueGammaInfo")
+    df3 = get_real_dataframe(root_filename, "G4S3TrueGammaInfo")
+
+    df1_f = filter_single_hits(df1)
+    df2_f = filter_single_hits(df2)
+    df3_f = filter_single_hits(df3)
+
+    merged = df1_f.merge(df2_f, on=['EventID', 'TrackID'], suffixes=('_1', '_2'), how='outer') \
+        .merge(df3_f, on=['EventID', 'TrackID'], how='outer')
+    merged.rename(columns={c: f'{c}_3' for c in df3_f.columns if c not in ['EventID', 'TrackID']}, inplace=True)
+    # Count how many stages fired for each (EventID, TrackID)
+    merged['stages_hit'] = (merged[[c for c in merged.columns if 'Xpos' in c]].notna().sum(axis=1))
+
+    # Keep only events with 2 or more stages
+    merged = merged[merged['stages_hit'] >= 2].reset_index(drop=True)
+    merged['Classification'] = merged.apply(classify_event, axis=1)
+
+    if drop_faulty:
+        merged = merged[merged['Classification'] != 'Faulty']
+
+    if drop_double_coincidences:
+        merged = merged[merged['Classification'] != 'DoubleCoinc']
+
+    return merged.drop(['stages_hit', 'Classification', 'Process_1', 'Process_2', 'Process_3'], axis=1)
+
+# For realistic detector data
+# Obtain dataframe from measured information from root file
+def get_measured_dataframe(root_filename, tree_name):
+    with uproot4.open(root_filename) as f:
+        tree = f[tree_name]
+        df = tree.arrays(['EventID', 'Line', 'Col', 'Edep'], library="pd")
+        df['Xpix'] = df['Col']
+        df['Ypix'] = df['Line']
+        df = df.drop(['Line', 'Col'], axis=1)
+        return df.sort_values(by=['EventID'])
+
+# Merge detector information from all 3 stages in a single dataframe
+# performing cluster filtering and converting pixel to coordinates
+def get_detector_information(rootfile, Npix=120, pitch=0.5):
+    df1 = get_measured_dataframe(rootfile, "G4Sensor1Hits")
+    df2 = get_measured_dataframe(rootfile, "G4Sensor2Hits")
+    df3 = get_measured_dataframe(rootfile, "G4Sensor3Hits")
+    df_hex1_clustered = cluster_df(df1)
+    df_hex2_clustered = cluster_df(df2)
+    df_hex3_clustered = cluster_df(df3)
+    df1_filt = filter_by_clusters(df_hex1_clustered)
+    df2_filt = filter_by_clusters(df_hex2_clustered)
+    df3_filt = filter_by_clusters(df_hex3_clustered)
+    df_all = df1_filt.merge(df2_filt, on='EventID', suffixes=('_1', '_2')).merge(df3_filt, on='EventID')
+    df_all.rename(columns={c: f'{c}_3' for c in df3_filt.columns if c not in ['EventID']}, inplace=True)
+    df_all['Xcm_1'], df_all['Ycm_1'] = pixel_to_coordinate(df_all['Xcm_1'], df_all['Ycm_1'], Npix, pitch)
+    df_all['Xcm_2'], df_all['Ycm_2'] = pixel_to_coordinate(df_all['Xcm_2'], df_all['Ycm_2'], Npix, pitch)
+    df_all['Xcm_3'], df_all['Ycm_3'] = pixel_to_coordinate(df_all['Xcm_3'], df_all['Ycm_3'], Npix, pitch)
+    return df_all.reset_index()
+
+# ------------------------------------------------------
+# ------------ RECONSTRUCTION FUNCTIONS ----------------
+# ------------------------------------------------------
+
+# Get a position vector for each voxel in the imaging volume
+def get_position_matrix(Xbins, Ybins, Zbins, xmin, xmax, ymin, ymax, zmin, zmax):
+    x_positions = np.linspace(xmin, xmax, Xbins)
+    y_positions = np.linspace(ymax, ymin, Ybins)
+    z_positions = np.linspace(zmin, zmax, Zbins)
+    X, Y, Z = np.meshgrid(x_positions, y_positions, z_positions, indexing='xy')
+    position_matrix = np.vstack([Y.ravel(), X.ravel(), Z.ravel()]).T
+    position_matrix_reshaped = position_matrix.reshape((Ybins, Xbins, Zbins, 3))
+    return position_matrix_reshaped
+
+# get compton angles from detector information
+def get_compton_angle(delta_E1, delta_E2, E0):
+    m_electron=0.511
+    E0 = np.where(E0 is None, delta_E1 + delta_E2, E0) # In case E0 is not provided assume full energy deposition
+    Emax = E0 / (1 + (m_electron / (2 * E0)))
+    cos_angle = 1 - m_electron * ((1 / (E0 - delta_E1)) - (1 / E0))
+    angle = np.arccos(cos_angle)
+    # Mask out invalid rows (where delta_E1 >= Emax, or cos_angle out of [-1, 1])
+    invalid = (delta_E1 >= Emax) | (cos_angle < -1) | (cos_angle > 1)
+    angle = np.where(invalid, np.nan, angle)
+    return angle
+
+# Function that finds the incoming photon energy in a 3 stage CC
+# Find the initial kinetic energy of the particle from the first two energy deposits and second scattering angle
+# Formula taken from S W Peterson et al 2010 Phys. Med. Biol. 55 6841
+def initial_energy(delta_E1, delta_E2, angle_2):
+    return delta_E1 + 0.5 * (delta_E2 + np.sqrt(delta_E2 ** 2 + (4 * (delta_E2 * 0.511) / (1 - np.cos(angle_2)))))
+
+# Get the initial Compton angle for double or triple coincident data
+# To get E0 from triple coincidences, I use the process described in S W Peterson et al 2010 Phys. Med. Biol. 55 6841
+def get_triple_scatters(df, on='cm'):
+    df_cc = df.copy()
+    # Set masks to know the type of coincidences
+    m1 = df_cc['Etot_1'].notna()
+    m2 = df_cc['Etot_2'].notna()
+    m3 = df_cc['Etot_3'].notna()
+    triple = m1 & m2 & m3
+    double_13 = m1 & (~m2) & m3
+    double_23 = (~m1) & m2 & m3
+    double_12 = m1 & m2 & (~m3)
+    # Initialise outputs
+    df_cc['initEnergy'] = np.nan
+    df_cc['comptAngle'] = np.nan
+    # --- Case 1: Triple coincidences ---
+    if triple.any():
+        delta_E1 = df_cc.loc[triple, 'Etot_1']
+        delta_E2 = df_cc.loc[triple, 'Etot_2']
+
+        n1 = get_unit_vector(
+            df_cc.loc[triple, 'X'+on+'_1'],
+            df_cc.loc[triple, 'Y'+on+'_1'],
+            df_cc.loc[triple, 'Z'+on+'_1'],
+            df_cc.loc[triple, 'X'+on+'_2'],
+            df_cc.loc[triple, 'Y'+on+'_2'],
+            df_cc.loc[triple, 'Z'+on+'_2'],
+        )
+        n2 = get_unit_vector(
+            df_cc.loc[triple, 'X'+on+'_2'],
+            df_cc.loc[triple, 'Y'+on+'_2'],
+            df_cc.loc[triple, 'Z'+on+'_2'],
+            df_cc.loc[triple, 'X'+on+'_3'],
+            df_cc.loc[triple, 'Y'+on+'_3'],
+            df_cc.loc[triple, 'Z'+on+'_3'],
+        )
+        angles_2 = np.arccos(np.sum(n1 * n2, axis=0))
+        E0 = initial_energy(delta_E1, delta_E2, angles_2)
+        df_cc.loc[triple, 'initEnergy'] = E0
+        df_cc.loc[triple, 'comptAngle'] = get_compton_angle(delta_E1, delta_E2, E0)
+
+    # --- Case 2: Double coincidences ---
+    # -------- Double 1-3 --------
+    if double_13.any():
+        dE1 = df_cc.loc[double_13, 'Etot_1']
+        dE2 = df_cc.loc[double_13, 'Etot_3']
+        E0  = dE1 + dE2
+
+        df_cc.loc[double_13, 'initEnergy'] = E0
+        df_cc.loc[double_13, 'comptAngle'] = get_compton_angle(dE1, dE2, E0)
+
+    # -------- Double 2-3 --------
+    if double_23.any():
+        dE1 = df_cc.loc[double_23, 'Etot_2']
+        dE2 = df_cc.loc[double_23, 'Etot_3']
+        E0  = dE1 + dE2
+
+        df_cc.loc[double_23, 'initEnergy'] = E0
+        df_cc.loc[double_23, 'comptAngle'] = get_compton_angle(dE1, dE2, E0)
+
+    # -------- Double 1-2 --------
+    if double_12.any():
+        dE1 = df_cc.loc[double_12, 'Etot_1']
+        dE2 = df_cc.loc[double_12, 'Etot_2']
+        E0  = dE1 + dE2
+
+        df_cc.loc[double_12, 'initEnergy'] = E0
+        df_cc.loc[double_12, 'comptAngle'] = get_compton_angle(dE1, dE2, E0)
+
+    return df_cc.dropna(subset=['comptAngle'])
+
+
+# Obtain a unit vector that points in the direction of two points (x1, y1, z1) and (x2, y2, z2)
+def get_unit_vector(x1, y1, z1, x2, y2, z2):
+    delta_x = x2 - x1
+    delta_y = y2 - y1
+    delta_z = z2 - z1
+    magnitude = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+    nx = delta_x / magnitude
+    ny = delta_y / magnitude
+    nz = delta_z / magnitude
+    n = np.array([nx, ny, nz])
+    return n
+
+# x1, y1, z1 hit position in scatterer
+# x2, y2, z2 hit position in absorber
+# r is a set of positions in the image volume, already converted to cartesian
+# k is a constant that determines the threshold (empirical)
+# zref is the distance between camera and image plane
+# This is defined as proposed by Mundy and Herman (2011) https://aapm.onlinelibrary.wiley.com/doi/10.1118/1.3519873
+def get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref):
+    threshold = k*np.abs(zref)*np.sin(2*theta)
+    #  definitions of the constant values
+    delta_x = x2 - x1
+    delta_y = y2 - y1
+    delta_z = z2 - z1
+    magnitude = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+    nx = delta_x / magnitude
+    ny = delta_y / magnitude
+    nz = delta_z / magnitude
+    # vectors and matrices
+    r1 = np.array([x1, y1, z1])
+    n = np.array([nx, ny, nz])
+    #  calculations
+    a = (np.dot(r - r1, n))**2  # image volume
+    b = np.cos(theta)**2 * np.linalg.norm(r - r1, axis=3)**2  # cone
+    Strue = np.abs(b - a)  # solution matrix
+    S = Strue.copy()
+    S[Strue <= threshold] = 1  # intersection points
+    S[Strue > threshold] = 0  # non-intersection points
+    return  np.transpose(np.nonzero(S)), S
+
+# This function returns an image constructed by means of a simple, standard backprojection where
+# the sum of all ellipses are plotted altogether. It requires the same parameters as the functions above.
+def get_simple_backprojection(df, Xbins, Ybins, Zbins, r, k, zref, on='pos'):
+    failed_events = []
+    Stot = np.zeros([Ybins, Xbins, Zbins])
+    for i in range(len(df)):
+        if np.isnan(df['X'+on+'_1'].values[i]):
+            x1 = (df['X'+on+'_2'].values[i])
+            y1 = (df['Y'+on+'_2'].values[i])
+            z1 = (df['Z'+on+'_2'].values[i])
+            x2 = (df['X'+on+'_3'].values[i])
+            y2 = (df['Y'+on+'_3'].values[i])
+            z2 = (df['Z'+on+'_3'].values[i])
+            zref = zref + 24  # interlayer spacing 2.4 cm fixed
+        else:
+            x1 = (df['X'+on+'_1'].values[i])
+            y1 = (df['Y'+on+'_1'].values[i])
+            z1 = (df['Z'+on+'_1'].values[i])
+            if np.isnan(df['X'+on+'_2'].values[i]):
+                x2 = (df['X'+on+'_3'].values[i])
+                y2 = (df['Y'+on+'_3'].values[i])
+                z2 = (df['Z'+on+'_3'].values[i])
+            else:
+                x2 = (df['X'+on+'_2'].values[i])
+                y2 = (df['Y'+on+'_2'].values[i])
+                z2 = (df['Z'+on+'_2'].values[i])
+        theta = df['comptAngle'].values[i]
+        ringPos, S = get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref)
+        Stot += S
+        if ringPos.size == 0:
+            failed_events.append(df['EventID'].values[i])
+        #bar.update(i + 1)
+    #bar.finish()
+    #print("Completion time (s): ", time.time()-t0)
+    df_reconstructed = df[~df['EventID'].isin(failed_events)]
+    print("N events out of FOV: ", len(failed_events))
+    return Stot, df_reconstructed
+
+# This function performs the first iteration of the stochastic origin ensamble from a dataframe df
+# The bins constitute the voxellisation of the image volume
+def get_init_state_SOE(df, Xbins, Ybins, Zbins, r, k, z1, z2, zref):
+    print("Performing first iteration of SOE...")
+    df = df.reset_index(drop=True)
+    t0 = time.time()
+    D = np.zeros([Ybins, Xbins, Zbins])
+    cones = []
+    old_positions = []
+    discarded_rows = []
+    failed_events = 0
+    events = df['EventID'].unique()
+    bar = progressbar.ProgressBar(maxval=len(df), widgets=[progressbar.Bar('=', '[', ']'), ' ',
+                                                           progressbar.Percentage()])
+    bar.start()
+    # First iteration of the SOE: a cone is calculated for each event
+    for i in range(len(df)):
+        x1 = (df['Xcm_1'].values[i])
+        y1 = (df['Ycm_1'].values[i])
+        x2 = (df['Xcm_2'].values[i])
+        y2 = (df['Ycm_2'].values[i])
+        theta = df['comptAngle'].values[i]
+        cone = get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref)[0]  # get the nonzero positions of S
+        cones.append(cone)
+        if cone.size == 0:
+            # the cone is useless either because the cone doesn't intersect with FOV
+            failed_events += 1
+            old_positions.append([])
+            discarded_rows.append(i)
+            continue
+        else:  # we choose our first position within the current cone
+            optimumPos = random.choice(cone)  # returns tuple for 3D position
+        D[optimumPos[0], optimumPos[1], optimumPos[2]] += 1
+        old_positions.append(optimumPos)
+        bar.update(i + 1)
+    bar.finish()
+    old_positions = pd.DataFrame({'EventID': events, 'oldPositions': old_positions})
+    cones = [i for j, i in enumerate(cones) if j not in discarded_rows]
+    old_positions = old_positions.drop(discarded_rows, axis=0)
+    df = df.drop(discarded_rows, axis=0)
+    print('Number of failed events: ', failed_events)
+    print("Completion time (s): ", time.time()-t0)
+    return df, D, cones, old_positions
+
+
+# This function performs the first iteration of the stochastic origin ensamble from a dataframe df
+# The bins constitute the voxellisation of the image volume
+def get_init_state_SOE_with_mask(df, Xbins, Ybins, Zbins, r, k, z1, z2, zref, mask):
+    print("Performing first iteration of SOE...")
+    df = df.reset_index(drop=True)
+    t0 = time.time()
+    D = np.zeros([Ybins, Xbins, Zbins])
+    cones = []
+    old_positions = []
+    discarded_rows = []
+    failed_events = 0
+    events = df['EventID'].unique()
+    bar = progressbar.ProgressBar(maxval=len(df), widgets=[progressbar.Bar('=', '[', ']'), ' ',
+                                                           progressbar.Percentage()])
+    bar.start()
+    # First iteration of the SOE: a cone is calculated for each event
+    for i in range(len(df)):
+        x1 = (df['Xcm_1'].values[i])
+        y1 = (df['Ycm_1'].values[i])
+        x2 = (df['Xcm_2'].values[i])
+        y2 = (df['Ycm_2'].values[i])
+        theta = df['comptAngle'].values[i]
+        init_cone = get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref)[0]  # get the nonzero positions of S
+        # Use the mask to get only the cone positions that lie within the mask
+        x, y = init_cone[:, 0], init_cone[:, 1]
+        valid_mask = mask[x, y] == 1
+        cone = init_cone[valid_mask]
+        cones.append(cone)
+        if cone.size == 0:
+            # the cone is useless either because the cone doesn't intersect with FOV
+            failed_events += 1
+            old_positions.append([])
+            discarded_rows.append(i)
+            continue
+        else:  # we choose our first position within the current cone
+            optimumPos = random.choice(cone)  # returns tuple for 3D position
+        D[optimumPos[0], optimumPos[1], optimumPos[2]] += 1
+        old_positions.append(optimumPos)
+        bar.update(i + 1)
+    bar.finish()
+    old_positions = pd.DataFrame({'EventID': events, 'oldPositions': old_positions})
+    cones = [i for j, i in enumerate(cones) if j not in discarded_rows]
+    old_positions = old_positions.drop(discarded_rows, axis=0)
+    df = df.drop(discarded_rows, axis=0)
+    print('Number of failed events: ', failed_events)
+    print("Completion time (s): ", time.time()-t0)
+    return df, D, cones, old_positions
+
+
+# If the cones have already been calculated and the failed events have been filtered but you want to reset the initial
+# state, use this function
+def reset_init_state_SOE(df, cones, Xbins, Ybins, Zbins):
+    # print("Performing first iteration of SOE...")
+    #  t0 = time.time()
+    D = np.zeros([Ybins, Xbins, Zbins])
+    old_positions = []
+    events = df['EventID'].unique()
+    # bar = progressbar.ProgressBar(maxval=len(df), widgets=[progressbar.Bar('=', '[', ']'), ' ',
+    # progressbar.Percentage()])
+    # bar.start()
+    # First iteration of the SOE: a cone is calculated for each event
+    for i in range(len(df)):
+        cone = cones[i]
+        randomPos = random.choice(cone)  # returns tuple for 3D position
+        D[randomPos[0], randomPos[1], randomPos[2]] += 1
+        old_positions.append(randomPos)
+        # bar.update(i + 1)
+    # bar.finish()
+    old_positions = pd.DataFrame({'EventID': events, 'oldPositions': old_positions})
+    # print("Completion time (s): ", time.time()-t0)
+    return D, old_positions
+
+
+# This is the main algorithm for the SOE reconstruction, which calls the first iteration function
+# Requires all parameters that are stated in the first iteration and N_soe, the number of iterations
+def get_final_state_SOE(df, D, cones, old_positions, N_events, N_soe, percent_convergence=4, acceptance_type="1"):
+    partial_results = []
+    Ntot = len(df)
+    # t0 = time.time()
+    print("Performing " + str(N_soe) + " iterations for " + str(N_events) + " events...")
+    bar = progressbar.ProgressBar(maxval=N_soe, widgets=[progressbar.Bar('=', '[', ']'), ' ',
+                                                         progressbar.Percentage()])
+    bar.start()
+    probabilities = []
+    for j in range(N_soe):
+        if j % 100 == 0:
+            partial_results.append(D.copy())
+        moves_performed = 0
+        for i in range(N_events):
+            k = random.randint(0, Ntot-1)
+            old_pos = old_positions['oldPositions'].values[k]
+            actual_cone = cones[k]
+            new_pos = random.choice(actual_cone)  # get a random position within the cone of event n
+            old_density = D[old_pos[0], old_pos[1], old_pos[2]]  # actual density at old position
+            new_density = D[new_pos[0], new_pos[1], new_pos[2]]  # actual density at new position
+            if acceptance_type=="1":
+                a = new_density
+                b = old_density - 1
+            else:
+                a = float(old_density ** old_density) * float((new_density + 1) ** (new_density + 1))
+                b = float((old_density + 1) ** (old_density + 1)) * float(new_density ** new_density)
+            if b > 0:
+                ratio = a / b
+            else:
+                ratio = 0
+            # acceptance_probability = min(1, ratio)
+            if ratio >= random.uniform(0, 1):
+                moves_performed += 1
+                D[new_pos[0], new_pos[1], new_pos[2]] += 1  # update density value at new position
+                D[old_pos[0], old_pos[1], old_pos[2]] -= 1  # update density value at old position
+                old_positions['oldPositions'].values[i] = new_pos  # update definition of old position
+        move_probability = 100*(moves_performed/N_events)
+        probabilities.append(move_probability)
+        # break the loop if we reach a stable probability of acceptance, defined as a mean of <(percent_convergence)%
+        # and a std < 1 for the last 100 iterations
+        if j > 500:
+            mean = np.mean(probabilities[j-500:j])
+            std = np.std(probabilities[j-500:j])
+            if (mean < percent_convergence) and (std < 1):
+                break
+        bar.update(j + 1)
+    bar.finish()
+    # print("Completion time (s): ", time.time() - t0)
+    return D, partial_results, probabilities
+
+
+def get_fast_SOE(df, D, cones, old_positions, N_events, N_soe, percent_convergence=0.2):
+    Ntot = len(df)
+    # t0 = time.time()
+    print("Performing " + str(N_soe) + " iterations for " + str(N_events) + " events...")
+    bar = progressbar.ProgressBar(maxval=N_soe, widgets=[progressbar.Bar('=', '[', ']'), ' ',
+                                                         progressbar.Percentage()])
+    bar.start()
+    probabilities = []
+    for j in range(N_soe):
+        moves_performed = 0
+        for i in range(N_events):
+            k = random.randint(0, Ntot-1)
+            old_pos = old_positions['oldPositions'].values[k]
+            actual_cone = cones[k]
+            new_pos = random.choice(actual_cone)  # get a random position within the cone of event n
+            old_density = D[old_pos[0], old_pos[1], old_pos[2]]  # actual density at old position
+            new_density = D[new_pos[0], new_pos[1], new_pos[2]]  # actual density at new position
+            a = new_density
+            b = old_density - 1
+            if b > 0:
+                ratio = a / b
+            else:
+                ratio = 0
+            # acceptance_probability = min(1, ratio)
+            if ratio >= random.uniform(0, 1):
+                moves_performed += 1
+                D[new_pos[0], new_pos[1], new_pos[2]] += 1  # update density value at new position
+                D[old_pos[0], old_pos[1], old_pos[2]] -= 1  # update density value at old position
+                old_positions['oldPositions'].values[i] = new_pos  # update definition of old position
+        move_probability = 100*(moves_performed/N_events)
+        probabilities.append(move_probability)
+        # break the loop if absolute difference between probabilities in the last 10 iteration remains below 0.2%
+        if j > 10:
+            last_probs = probabilities[j-10:j+1]
+            stable = all(abs(last_probs[k + 1] - last_probs[k]) < percent_convergence for k in range(10))
+            if stable:
+                break
+        bar.update(j + 1)
+    bar.finish()
+    # print("Completion time (s): ", time.time() - t0)
+    return D, probabilities
+
+def get_conical_surface_with_threshold(x1, y1, z1, x2, y2, z2, theta, position_matrix, k):
+    threshold = k*np.sin(2*theta)
+    #  definitions of the constant values
+    delta_x = x2 - x1
+    delta_y = y2 - y1
+    delta_z = z2 - z1
+    magnitude = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
+    nx = delta_x / magnitude
+    ny = delta_y / magnitude
+    nz = delta_z / magnitude
+    # vectors and matrices
+    r1 = np.array([x1, y1, z1])
+    n = np.array([nx, ny, nz])
+    r = position_matrix
+    #  calculations
+    a = (np.dot(r - r1, n))**2  # image volume
+    b = np.cos(theta)**2 * np.linalg.norm(r - r1, axis=3)**2  # cone
+    Strue = np.abs(b - a)  # solution matrix
+    S = Strue.copy()
+    S[Strue <= threshold] = 1  # intersection points
+    S[Strue > threshold] = 0  # non-intersection points
+    return np.transpose(np.nonzero(S)), S, Strue, threshold
+
+
+def get_SBP_from_cones(Xbins, Ybins, Zbins, cones):
+    Stot = np.zeros([Ybins, Xbins, Zbins])
+    for cone in cones:
+        for pos in cone:
+            Stot[pos[0], pos[1], pos[2]] += 1
+    return Stot
+
+
+# Uses a weighting array (could be the SBP)
+def get_final_state_SOE_weighted(df, D, cones, old_positions, weights, N_events, N_soe, percent_convergence=1):
+    Ntot = len(df)
+    bar = progressbar.ProgressBar(maxval=N_soe, widgets=[progressbar.Bar('=', '[', ']'), ' ',
+                                                         progressbar.Percentage()])
+    bar.start()
+    probabilities = []
+    central_row = int(np.shape(D)[0]/2)
+    for j in range(N_soe):
+        moves_performed = 0
+        for i in range(N_events):
+            k = random.randint(0, Ntot-1)
+            old_pos = old_positions['oldPositions'].values[k]
+            actual_cone = cones[k]
+            new_pos = random.choice(actual_cone)  # get a random position within the cone of event n
+            old_density = D[old_pos[0], old_pos[1], old_pos[2]]  # actual density at old position
+            new_density = D[new_pos[0], new_pos[1], new_pos[2]]  # actual density at new position
+            old_w = weights[old_pos[0], old_pos[1]]
+            new_w = weights[new_pos[0], new_pos[1]]
+            if old_density > 1:
+                ratio = (new_density / (old_density - 1))*(new_w/old_w)
+            else:
+                ratio = 0
+            # acceptance_probability = min(1, ratio)
+            if ratio >= random.uniform(0, 1):
+                moves_performed += 1
+                D[new_pos[0], new_pos[1], new_pos[2]] += 1  # update density value at new position
+                D[old_pos[0], old_pos[1], old_pos[2]] -= 1  # update density value at old position
+                old_positions['oldPositions'].values[i] = new_pos  # update definition of old position
+        move_probability = 100*(moves_performed/N_events)
+        probabilities.append(move_probability)
+        # break the loop if we reach a stable probability of acceptance, defined as a mean of <(percent_convergence)%
+        # and a std < 1 for the last 100 iterations
+        if j > 500:
+            mean = np.mean(probabilities[j-500:j])
+            std = np.std(probabilities[j-500:j])
+            if (mean < percent_convergence) and (std < 1):
+                break
+        bar.update(j + 1)
+    bar.finish()
+    # print("Completion time (s): ", time.time() - t0)
+    return D, probabilities
