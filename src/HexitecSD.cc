@@ -57,24 +57,29 @@ void HexitecSD::Initialize(G4HCofThisEvent *hce)
 
 G4bool HexitecSD::ProcessHits(G4Step *step, G4TouchableHistory*)
 {
-    G4String proc = step->GetPostStepPoint()->GetProcessDefinedStep()->GetProcessName();
-    if (proc!="CoupledTransportation" and proc!="Rayl") {
-        G4int parentID = step->GetTrack()->GetParentID();
-        G4int trackID = step->GetTrack()->GetTrackID();
-        G4String particle = step->GetTrack()->GetParticleDefinition()->GetParticleName();
-        G4double edep = step->GetTotalEnergyDeposit();
-        G4double epre = step->GetPreStepPoint()->GetKineticEnergy();
-        G4double epost = step->GetPostStepPoint()->GetKineticEnergy();
-        G4double ediff = epre - epost;
-        G4int lineNumber = step->GetPreStepPoint()->GetTouchable()->GetReplicaNumber(1);
-        G4int columnNumber = step->GetPreStepPoint()->GetTouchable()->GetReplicaNumber(0);
-        G4int copyNo = step->GetPreStepPoint()->GetTouchable()->GetCopyNumber(3);
-        G4ThreeVector pos = step->GetPostStepPoint()->GetPosition();
-        G4double init_ene = step->GetTrack()->GetVertexKineticEnergy();
-        G4double weight = step->GetTrack()->GetWeight();
+    auto ene_dep = step->GetTotalEnergyDeposit();
+    if (ene_dep > 0.) { //proc!="CoupledTransportation" and proc!="Rayl"
+        auto preStep = step->GetPreStepPoint();
+        auto postStep = step->GetPostStepPoint();
+        const G4VTouchable* touchable = postStep->GetTouchable();
+        if (!touchable || touchable->GetHistoryDepth() < 3) return false;
+        G4int copyNo = touchable->GetCopyNumber(3);
+        auto track = step->GetTrack();
+        G4int trackID = track->GetTrackID();
+        G4String particle = track->GetParticleDefinition()->GetParticleName();
+        G4String proc = postStep->GetProcessDefinedStep()->GetProcessName();
+        G4ThreeVector pos = postStep->GetPosition();
+        G4double delta_ene = preStep->GetKineticEnergy() - postStep->GetKineticEnergy();
+
         auto *hit = new HexitecHit();
-        hit->Add(copyNo, parentID, trackID, edep, lineNumber, columnNumber, pos, init_ene, ediff, particle, weight);
+
+        hit->Add(copyNo, trackID, pos, delta_ene, particle, proc);
         fHitsCollection->insert(hit);
+
+        // Info needed for realistic hits
+        // G4int lineNumber = postStep->GetTouchable()->GetReplicaNumber(1);
+        // G4int columnNumber = postStep->GetTouchable()->GetReplicaNumber(0);
+        // G4double edep = step->GetTotalEnergyDeposit();
     }
     return true;
 }

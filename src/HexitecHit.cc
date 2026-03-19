@@ -38,16 +38,11 @@ G4ThreadLocal G4Allocator<HexitecHit> *HexitecHitAllocator = nullptr;
 
 HexitecHit::HexitecHit() : G4VHit(),
                            fCopyNo(-1),
-                           fEdep(0.),
-                           fParentID(0),
                            fTrackID(0),
                            fParticleName(""),
+                           fProcessName(""),
                            fInteractionPos(0),
-                           fLine(0),
-                           fCol(0),
-                           fInitialEnergy(0.),
-                           fEdiff(0.),
-                           fWeight(0.) {
+                           fEdiff(0.){
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -59,32 +54,21 @@ HexitecHit::~HexitecHit() = default;
 HexitecHit::HexitecHit(const HexitecHit &right)
     : G4VHit() {
     fCopyNo = right.fCopyNo;
-    fEdep = right.fEdep;
-    fParentID = right.fParentID;
     fTrackID = right.fTrackID;
     fParticleName = right.fParticleName;
+    fProcessName = right.fProcessName;
     fInteractionPos = right.fInteractionPos;
-    fLine = right.fLine;
-    fCol = right.fCol;
-    fInitialEnergy= right.fInitialEnergy;
     fEdiff = right.fEdiff;
-    fWeight = right.fWeight;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 const HexitecHit &HexitecHit::operator=(const HexitecHit &right) {
     fCopyNo = right.fCopyNo;
-    fEdep = right.fEdep;
-    fParentID = right.fParentID;
     fTrackID = right.fTrackID;
     fParticleName = right.fParticleName;
     fInteractionPos = right.fInteractionPos;
-    fLine = right.fLine;
-    fCol = right.fCol;
-    fInitialEnergy = right.fInitialEnergy;
     fEdiff = right.fEdiff;
-    fWeight = right.fWeight;
 
     return *this;
 }

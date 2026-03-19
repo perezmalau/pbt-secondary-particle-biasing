@@ -75,86 +75,93 @@ void EventAction::EndOfEventAction(const G4Event *event)
     }
     // Get hits collections
     auto sensorHC = GetHitsCollection(fSensorHCID, event);
-    G4int nSensor = sensorHC->entries();
+    G4int nHits = sensorHC->entries();
+
+    // --- Group hits by trackID, preserving all hits per stage ---
+    std::map<G4int, std::array<std::vector<HexitecHit*>, 3>> hitsByTrack;
+    for (G4int i = 0; i < nHits; i++)
+    {
+        HexitecHit* hit = (*sensorHC)[i];
+        G4int copyNo = hit->GetCopyNo();
+        G4String particle = hit->GetParticleName();
+        if (copyNo >= 0 && copyNo <= 2)
+            hitsByTrack[hit->GetTrackID()][copyNo].push_back(hit);
+    }
 
     // Define pixel maps - the realistic detector information
-    std::map<std::pair<int,int>, G4double> pixelMaps[3];
+    // std::map<std::pair<int,int>, G4double> pixelMaps[3];
 
-    // Define a gamma record with the true gamma information (set of sensor hit and true pos and process info)
-    struct GammaRecord {
-        // The actual set of hits in the sensors
-        std::set<G4int> sensorsHit;
-        // The position, process and weight are recorded as true information
-        std::map<G4int, std::vector<std::tuple<G4ThreeVector, G4double, G4double, G4double >>> trueInfo;
-    };
+    // --- Find coincident gammas: must have at least one hit in each stage ---
+    G4AnalysisManager* analysisManager = G4AnalysisManager::Instance();
 
-    std::map<G4int, GammaRecord> gammaRecords; // key: trackID of the gamma
+    for (auto& [trackID, hitsPerStage] : hitsByTrack)
+    {
+        // Condition for triple coincidence:
+        // bool isCoincident = !hitsPerStage[0].empty()
+        //                  && !hitsPerStage[1].empty()
+        //                  && !hitsPerStage[2].empty();
+        // if (!isCoincident) continue;
+
+        // Condition for any kind of coincidence involving 2 or more stages:
+        G4int stagesHit = (G4int)!hitsPerStage[0].empty()
+                + (G4int)!hitsPerStage[1].empty()
+                + (G4int)!hitsPerStage[2].empty();
+        if (stagesHit < 2) continue;
+
+        // --- Record every individual hit across all three stages ---
+        for (G4int stage = 0; stage < 3; stage++)
+        {
+            for (HexitecHit* hit : hitsPerStage[stage])
+            {
+                auto pos = hit->GetInteractionPos();
+                auto ediff = hit->GetEnergyDiff();
+                auto process = hit->GetProcessName();
+                auto particle = hit->GetParticleName();
+                if (particle == "gamma") {
+                    analysisManager->FillNtupleIColumn(stage, 0, evtID);
+                    analysisManager->FillNtupleIColumn(stage, 1, trackID);
+                    analysisManager->FillNtupleDColumn(stage, 2, pos.x()/CLHEP::mm);
+                    analysisManager->FillNtupleDColumn(stage, 3, pos.y()/CLHEP::mm);
+                    analysisManager->FillNtupleDColumn(stage, 4, pos.z()/CLHEP::mm);
+                    analysisManager->FillNtupleDColumn(stage, 5, ediff);
+                    analysisManager->FillNtupleSColumn(stage, 6, process);
+                    analysisManager->AddNtupleRow(stage);
+                }
+            }
+        }
+    }
+
 
     // Loop through all hits in the event, record the relevant information
-    for (G4int i = 0; i < nSensor; i++) {
-        auto hit      = (*sensorHC)[i];
-        G4int copyNo  = hit->GetCopyNo();
-        // Accumulate pixel energy
-        G4int line = hit->GetLineNumber();
-        G4int col  = hit->GetColNumber();
-        pixelMaps[copyNo][{line, col}] += hit->GetEdep();
+    // for (G4int i = 0; i < nHits; i++) {
+    //     auto hit      = (*sensorHC)[i];
+    //     G4int copyNo  = hit->GetCopyNo();
+    //     // Accumulate pixel energy
+    //     G4int line = hit->GetLineNumber();
+    //     G4int col  = hit->GetColNumber();
+    //     pixelMaps[copyNo][{line, col}] += hit->GetEdep();
+    // }
 
-        // Only fill true info for primary gammas
-        G4int    parentID = hit->GetParentID();
-        G4String particle = hit->GetParticleName();
-        if (particle == "gamma" and parentID == 1) {
-            G4int gammaTrackID = hit->GetTrackID();
-            auto &record = gammaRecords[gammaTrackID];
-            record.sensorsHit.insert(copyNo);
-            record.trueInfo[copyNo].push_back({ hit->GetInteractionPos(), hit->GetInitialEnergy(), hit->GetEnergyDiff(), hit->GetWeight()});
-        }
-    }
-
-    auto analysisManager = G4AnalysisManager::Instance();
-
-    // Fill true information based on trackID coincidences
-    for (auto &[gammaTrackID, record] : gammaRecords) {
-        // Require hits in all 3 sensors
-        if (record.sensorsHit.size() < 3) continue;
-        // Fill "true" interaction ntuples (ntuples 0, 1, 2 per sensor)
-        for (G4int sensorIdx = 0; sensorIdx < 3; sensorIdx++) {
-            auto it = record.trueInfo.find(sensorIdx);
-            if (it == record.trueInfo.end()) continue;
-            for (const auto &[pos, ene, ediff, weight] : record.trueInfo[sensorIdx]) {
-                analysisManager->FillNtupleIColumn(sensorIdx, 0, evtID);
-                analysisManager->FillNtupleIColumn(sensorIdx, 1, gammaTrackID);
-                analysisManager->FillNtupleDColumn(sensorIdx, 2, pos.x()/CLHEP::cm);
-                analysisManager->FillNtupleDColumn(sensorIdx, 3, pos.y()/CLHEP::cm);
-                analysisManager->FillNtupleDColumn(sensorIdx, 4, pos.z()/CLHEP::cm);
-                analysisManager->FillNtupleDColumn(sensorIdx, 5, ene);
-                analysisManager->FillNtupleDColumn(sensorIdx, 6, ediff);
-                //analysisManager->FillNtupleDColumn(sensorIdx, 7, weight);
-                analysisManager->AddNtupleRow(sensorIdx);
-            }
-        }
-    }
-
-    // Fill realistic detector information based on event coincidences and a detector threshold at 3 keV
-    constexpr G4double kEnergyThreshold = 0.003; // MeV
-
-    // Realistic coincidence: all 3 pixel maps are non-empty
-    bool realisticCoincidence = !pixelMaps[0].empty() &&
-                                !pixelMaps[1].empty() &&
-                                !pixelMaps[2].empty();
-
-    // Fill the interaction ntuples (ntuples 3, 4, 5 per sensor)
-    if (realisticCoincidence) {
-        for (G4int sensorIdx = 0; sensorIdx < 3; sensorIdx++) {
-            G4int ntupleIdx = 3 + sensorIdx;
-            for (const auto &[coords, etot] : pixelMaps[sensorIdx]) {
-                if (etot <= kEnergyThreshold) continue;
-                analysisManager->FillNtupleIColumn(ntupleIdx, 0, evtID);
-                analysisManager->FillNtupleIColumn(ntupleIdx, 1, coords.first);  // line
-                analysisManager->FillNtupleIColumn(ntupleIdx, 2, coords.second); // col
-                analysisManager->FillNtupleDColumn(ntupleIdx, 3, etot);
-                analysisManager->AddNtupleRow(ntupleIdx);
-            }
-        }
-    }
+    // // Fill realistic detector information based on event coincidences and a detector threshold at 3 keV
+    // constexpr G4double kEnergyThreshold = 0.003; // MeV
+    //
+    // // Realistic coincidence: all 3 pixel maps are non-empty
+    // bool realisticCoincidence = !pixelMaps[0].empty() &&
+    //                             !pixelMaps[1].empty() &&
+    //                             !pixelMaps[2].empty();
+    //
+    // // Fill the interaction ntuples (ntuples 3, 4, 5 per sensor)
+    // if (realisticCoincidence) {
+    //     for (G4int sensorIdx = 0; sensorIdx < 3; sensorIdx++) {
+    //         G4int ntupleIdx = 3 + sensorIdx;
+    //         for (const auto &[coords, etot] : pixelMaps[sensorIdx]) {
+    //             if (etot <= kEnergyThreshold) continue;
+    //             analysisManager->FillNtupleIColumn(ntupleIdx, 0, evtID);
+    //             analysisManager->FillNtupleIColumn(ntupleIdx, 1, coords.first);  // line
+    //             analysisManager->FillNtupleIColumn(ntupleIdx, 2, coords.second); // col
+    //             analysisManager->FillNtupleDColumn(ntupleIdx, 3, etot);
+    //             analysisManager->AddNtupleRow(ntupleIdx);
+    //         }
+    //     }
+    // }
 }
-

@@ -52,34 +52,24 @@ public:
     inline void  operator delete(void *aHit);
 
     // methods to handle data
-    void Add(G4int copyNo, G4int parentID, G4int trackID, G4double de, G4int line, G4int col, const G4ThreeVector& intPos,
-        G4double init_ene, G4double ediff, G4String particle, G4double weight);
+    void Add(G4int copyNo, G4int trackID, const G4ThreeVector& intpos, G4double ediff,
+        G4String particle, G4String process);
 
     // get methods
     G4int GetCopyNo() const { return fCopyNo; }
-    G4double GetEdep() const { return fEdep; }
-    G4int GetParentID() const { return fParentID; }
     G4int GetTrackID() const { return fTrackID; }
     G4String GetParticleName() const { return fParticleName; }
-    G4int GetLineNumber() const { return fLine; }
-    G4int GetColNumber() const { return fCol; }
+    G4String GetProcessName() const { return fProcessName; }
     G4ThreeVector GetInteractionPos() const { return fInteractionPos; }
-    G4double GetInitialEnergy() const { return fInitialEnergy; }
     G4double GetEnergyDiff() const {return fEdiff; }
-    G4double GetWeight() const { return fWeight; }
 
 private:
     G4int           fCopyNo;
-    G4double        fEdep;
-    G4int           fParentID;
     G4int           fTrackID;
     G4String        fParticleName;
+    G4String        fProcessName;
     G4ThreeVector   fInteractionPos;
-	G4int			fLine;
-	G4int 			fCol;
-    G4double        fInitialEnergy;
     G4double        fEdiff;
-    G4double        fWeight;
 };
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -107,20 +97,15 @@ inline void HexitecHit::operator delete(void *hit)
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
-inline void HexitecHit::Add(G4int copyNo, G4int parentID, G4int trackID, G4double de, G4int line, G4int col,
-    const G4ThreeVector& intpos, G4double init_ene, G4double ediff, G4String particle, G4double weight)
+inline void HexitecHit::Add(G4int copyNo, G4int trackID, const G4ThreeVector& intpos, G4double ediff,
+    G4String particle, G4String process)
 {
     fCopyNo = copyNo;
-    fEdep 	= de;
-    fParentID = parentID;
     fTrackID = trackID;
     fParticleName = std::move(particle);
-    fLine	= line;
-    fCol = col;
+    fProcessName = std::move(process);
     fInteractionPos = intpos;
-    fInitialEnergy = init_ene;
     fEdiff = ediff;
-    fWeight = weight;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
