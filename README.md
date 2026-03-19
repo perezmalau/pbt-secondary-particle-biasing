@@ -1,1 +1,1 @@
-A simple water phantom irradiated by a proton beam. A 3-stage CZT compton camera is placed on the side. We read double and triple coincidences.
+A simple water phantom irradiated by a proton beam. A 3-stage CZT compton camera is placed on the side. We read double and triple coincidences from the secondary gammas that are produced from the primary beam and redirected exclusively towards the camera area.
