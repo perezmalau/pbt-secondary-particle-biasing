@@ -1,50 +1,74 @@
+"""
+Last modified on Fri 20 Mar 2026
+@author: Maria Perez-Lara, University College London, University of Warwick
+
+Purpose: Execute the analysis and reconstruction of the Compton scattering data
+
+We define the true data to be CZT camera output having:
+- Ability to find coincident hits coming from the same gamma track
+- Perfect energy and spatial resolution
+- If drop_faulty is set to true, also the ability to drop backscatters
+
+The realistic camera output therefore has:
+- Coincident hits corresponding to the same event ID (but no track info)
+- Finite spatial resolution (500 micron pitch)
+- Discrimination from events producing more than one cluster in a single stage
+"""
 from ComptCamFunctions import (get_true_information,
                                get_detector_information,
-                               get_triple_scatters,
+                               get_compton_scatters,
                                get_position_matrix,
-                               get_conical_surface,
-                               get_real_dataframe,
                                get_simple_backprojection
                                )
-import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 
 
-rootfile = "biasing_test_2E7.root"
-df_true = get_true_information(rootfile, drop_double_coincidences=False)
-df_cc = get_triple_scatters(df_true, on='pos')
-
-k=1
+rootfile = "biasing_test_5E7.root"
+k = 1.5 # empirical
 Xbins = 100
-Ybins = 100
+Ybins = 50
 Zbins = 1
-xmin = -100
-xmax = 100
-ymin = -100
-ymax = 100
-zref = -200
-
+xmin = -100 # mm
+xmax = 100 # mm
+ymin = -50 # mm
+ymax = 50 # mm
+zref = -200 # mm
+low_energy = 1 # MeV
+high_energy = 7 # MeV
 r = get_position_matrix(Xbins, Ybins, Zbins, xmin, xmax, ymin, ymax, zref, zref)
-df_ene = df_cc[(df_cc['initEnergy'] < 6.1) & (df_cc['initEnergy'] > 2.1)]
-SBP, df_sbp = get_simple_backprojection(df_ene, Xbins, Ybins, Zbins, r, k, zref, on='pos')
 
+# --------- True data ---------
+df_true = get_true_information(rootfile, drop_faulty=True)
+df_true_cc = get_compton_scatters(df_true, on='pos').sort_values(by='EventID')
+df_true_ene = df_true_cc[(df_true_cc['initEnergy'] < high_energy) & (df_true_cc['initEnergy'] > low_energy)]
+SBP_t, df_sbp_t = get_simple_backprojection(df_true_ene, Xbins, Ybins, Zbins, r, k, zref, on='pos')
+
+# ------- Realistic data -------
+df_measured = get_detector_information(rootfile, Npix=120, pitch=0.5)
+df_measured['Zcm_1'] = 2.5
+df_measured['Zcm_2'] = 31.5
+df_measured['Zcm_3'] = 60.5
+df_measured_cc = get_compton_scatters(df_measured, on='cm').sort_values(by='EventID')
+df_measured_ene = df_measured_cc[(df_measured_cc['initEnergy'] < high_energy) & (df_measured_cc['initEnergy'] > low_energy)]
+SBP_m, df_sbp_m = get_simple_backprojection(df_measured_ene, Xbins, Ybins, Zbins, r, k, zref, on='pos')
+
+# ------- Reconstructed images ---------
 plt.figure()
-plt.imshow(np.rot90(SBP[:, :, 0], k=3), cmap='gnuplot', extent=[-xmax, -xmin, ymin, ymax])
-cb = plt.colorbar()
+plt.imshow(SBP_t[:, :, 0].T, cmap='gnuplot', extent=[-xmax, -xmin, ymin, ymax], origin='lower')
+cb = plt.colorbar(orientation='horizontal')
 cb.set_label(r'$N_\gamma$ (counts)', labelpad=15)
 plt.xlabel("X (mm)")
 plt.ylabel("Y (mm)")
 plt.tight_layout()
+plt.title("Ideal camera", fontweight='bold')
 plt.show()
 
-# df_measured = get_detector_information(rootfile, Npix=120, pitch=0.5)
-# z1 = np.nanmean(df_true['PosZ_1'].values)
-# z2 = np.nanmean(df_true['PosZ_2'].values)
-# z3 = np.nanmean(df_true['PosZ_3'].values)
-# df_measured['Zcm_1'] = z1
-# df_measured['Zcm_2'] = z2
-# df_measured['Zcm_3'] = z3
-# df_cc = get_triple_scatters(df_measured)
-# df_merged = pd.merge(df_cc, df_true, on='EventID', how="left")
-#
+plt.figure()
+plt.imshow(SBP_m[:, :, 0].T, cmap='gnuplot', extent=[-xmax, -xmin, ymin, ymax], origin='lower')
+cb = plt.colorbar(orientation='horizontal')
+cb.set_label(r'$N_\gamma$ (counts)', labelpad=15)
+plt.xlabel("X (mm)")
+plt.ylabel("Y (mm)")
+plt.tight_layout()
+plt.title("Realistic camera", fontweight='bold')
+plt.show()

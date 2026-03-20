@@ -1,5 +1,5 @@
 """
-Last modified on Thu 19 Mar 2026
+Last modified on Fri 20 Mar 2026
 @author: Maria Perez-Lara, University College London, University of Warwick
 
 Purpose: Read out 2 stage and 3 stage compton cam data,
@@ -153,7 +153,7 @@ def get_real_dataframe(root_filename, tree_name):
 
 # Merge ideal information from all 3 stages in a single dataframe using only single hit events
 # Classifies coincidences as double, triple or faulty
-def get_true_information(root_filename, drop_faulty=True, drop_double_coincidences=True):
+def get_true_information(root_filename, drop_faulty=True):
     df1 = get_real_dataframe(root_filename, "G4S1TrueGammaInfo")
     df2 = get_real_dataframe(root_filename, "G4S2TrueGammaInfo")
     df3 = get_real_dataframe(root_filename, "G4S3TrueGammaInfo")
@@ -174,9 +174,6 @@ def get_true_information(root_filename, drop_faulty=True, drop_double_coincidenc
 
     if drop_faulty:
         merged = merged[merged['Classification'] != 'Faulty']
-
-    if drop_double_coincidences:
-        merged = merged[merged['Classification'] != 'DoubleCoinc']
 
     return merged.drop(['stages_hit', 'Classification', 'Process_1', 'Process_2', 'Process_3'], axis=1)
 
@@ -203,12 +200,17 @@ def get_detector_information(rootfile, Npix=120, pitch=0.5):
     df1_filt = filter_by_clusters(df_hex1_clustered)
     df2_filt = filter_by_clusters(df_hex2_clustered)
     df3_filt = filter_by_clusters(df_hex3_clustered)
-    df_all = df1_filt.merge(df2_filt, on='EventID', suffixes=('_1', '_2')).merge(df3_filt, on='EventID')
-    df_all.rename(columns={c: f'{c}_3' for c in df3_filt.columns if c not in ['EventID']}, inplace=True)
+    merged = df1_filt.merge(df2_filt, on='EventID', suffixes=('_1', '_2'), how='outer') \
+        .merge(df3_filt, on='EventID', how='outer')
+    merged.rename(columns={c: f'{c}_3' for c in df3_filt.columns if c not in ['EventID']}, inplace=True)
+    merged['stages_hit'] = (merged[[c for c in merged.columns if 'Xcm' in c]].notna().sum(axis=1))
+
+    # Keep only events with 2 or more stages
+    df_all = merged[merged['stages_hit'] >= 2].reset_index()
     df_all['Xcm_1'], df_all['Ycm_1'] = pixel_to_coordinate(df_all['Xcm_1'], df_all['Ycm_1'], Npix, pitch)
     df_all['Xcm_2'], df_all['Ycm_2'] = pixel_to_coordinate(df_all['Xcm_2'], df_all['Ycm_2'], Npix, pitch)
     df_all['Xcm_3'], df_all['Ycm_3'] = pixel_to_coordinate(df_all['Xcm_3'], df_all['Ycm_3'], Npix, pitch)
-    return df_all.reset_index()
+    return df_all.drop(['stages_hit'], axis=1)
 
 # ------------------------------------------------------
 # ------------ RECONSTRUCTION FUNCTIONS ----------------
@@ -219,10 +221,9 @@ def get_position_matrix(Xbins, Ybins, Zbins, xmin, xmax, ymin, ymax, zmin, zmax)
     x_positions = np.linspace(xmin, xmax, Xbins)
     y_positions = np.linspace(ymax, ymin, Ybins)
     z_positions = np.linspace(zmin, zmax, Zbins)
-    X, Y, Z = np.meshgrid(x_positions, y_positions, z_positions, indexing='xy')
-    position_matrix = np.vstack([Y.ravel(), X.ravel(), Z.ravel()]).T
-    position_matrix_reshaped = position_matrix.reshape((Ybins, Xbins, Zbins, 3))
-    return position_matrix_reshaped
+    X, Y, Z = np.meshgrid(x_positions, y_positions, z_positions, indexing='ij')
+    position_matrix = np.stack([X, Y, Z], axis=-1)
+    return position_matrix
 
 # get compton angles from detector information
 def get_compton_angle(delta_E1, delta_E2, E0):
@@ -230,11 +231,10 @@ def get_compton_angle(delta_E1, delta_E2, E0):
     E0 = np.where(E0 is None, delta_E1 + delta_E2, E0) # In case E0 is not provided assume full energy deposition
     Emax = E0 / (1 + (m_electron / (2 * E0)))
     cos_angle = 1 - m_electron * ((1 / (E0 - delta_E1)) - (1 / E0))
-    angle = np.arccos(cos_angle)
     # Mask out invalid rows (where delta_E1 >= Emax, or cos_angle out of [-1, 1])
     invalid = (delta_E1 >= Emax) | (cos_angle < -1) | (cos_angle > 1)
-    angle = np.where(invalid, np.nan, angle)
-    return angle
+    angle = np.arccos(np.clip(cos_angle, -1, 1))
+    return np.where(invalid, np.nan, angle)
 
 # Function that finds the incoming photon energy in a 3 stage CC
 # Find the initial kinetic energy of the particle from the first two energy deposits and second scattering angle
@@ -244,23 +244,22 @@ def initial_energy(delta_E1, delta_E2, angle_2):
 
 # Get the initial Compton angle for double or triple coincident data
 # To get E0 from triple coincidences, I use the process described in S W Peterson et al 2010 Phys. Med. Biol. 55 6841
-def get_triple_scatters(df, on='cm'):
+def get_compton_scatters(df, on='cm'):
     df_cc = df.copy()
     # Set masks to know the type of coincidences
     m1 = df_cc['Etot_1'].notna()
     m2 = df_cc['Etot_2'].notna()
     m3 = df_cc['Etot_3'].notna()
+    # Classify as double or triple coincidence
     triple = m1 & m2 & m3
-    double_13 = m1 & (~m2) & m3
-    double_23 = (~m1) & m2 & m3
-    double_12 = m1 & m2 & (~m3)
+    double = (m1 & m2) | (m1 & m3) | (m2 & m3)
     # Initialise outputs
     df_cc['initEnergy'] = np.nan
     df_cc['comptAngle'] = np.nan
     # --- Case 1: Triple coincidences ---
     if triple.any():
-        delta_E1 = df_cc.loc[triple, 'Etot_1']
-        delta_E2 = df_cc.loc[triple, 'Etot_2']
+        dE1 = df_cc.loc[triple, 'Etot_1']
+        dE2 = df_cc.loc[triple, 'Etot_2']
 
         n1 = get_unit_vector(
             df_cc.loc[triple, 'X'+on+'_1'],
@@ -279,38 +278,21 @@ def get_triple_scatters(df, on='cm'):
             df_cc.loc[triple, 'Z'+on+'_3'],
         )
         angles_2 = np.arccos(np.sum(n1 * n2, axis=0))
-        E0 = initial_energy(delta_E1, delta_E2, angles_2)
+        E0 = initial_energy(dE1, dE2, angles_2)
         df_cc.loc[triple, 'initEnergy'] = E0
-        df_cc.loc[triple, 'comptAngle'] = get_compton_angle(delta_E1, delta_E2, E0)
-
+        df_cc.loc[triple, 'comptAngle'] = get_compton_angle(dE1, dE2, E0)
     # --- Case 2: Double coincidences ---
-    # -------- Double 1-3 --------
-    if double_13.any():
-        dE1 = df_cc.loc[double_13, 'Etot_1']
-        dE2 = df_cc.loc[double_13, 'Etot_3']
-        E0  = dE1 + dE2
-
-        df_cc.loc[double_13, 'initEnergy'] = E0
-        df_cc.loc[double_13, 'comptAngle'] = get_compton_angle(dE1, dE2, E0)
-
-    # -------- Double 2-3 --------
-    if double_23.any():
-        dE1 = df_cc.loc[double_23, 'Etot_2']
-        dE2 = df_cc.loc[double_23, 'Etot_3']
-        E0  = dE1 + dE2
-
-        df_cc.loc[double_23, 'initEnergy'] = E0
-        df_cc.loc[double_23, 'comptAngle'] = get_compton_angle(dE1, dE2, E0)
-
-    # -------- Double 1-2 --------
-    if double_12.any():
-        dE1 = df_cc.loc[double_12, 'Etot_1']
-        dE2 = df_cc.loc[double_12, 'Etot_2']
-        E0  = dE1 + dE2
-
-        df_cc.loc[double_12, 'initEnergy'] = E0
-        df_cc.loc[double_12, 'comptAngle'] = get_compton_angle(dE1, dE2, E0)
-
+    if double.any():
+        # Map energies in interaction order
+        dE1 = df_cc['Etot_1'].where(m1, df_cc['Etot_2'])
+        dE2 = df_cc['Etot_2'].where(m1 & m2, df_cc['Etot_3'])
+        # Restrict to doubles only (exclude triples)
+        dE1 = dE1[double & ~triple]
+        dE2 = dE2[double & ~triple]
+        # Assume full energy deposition
+        E0 = dE1 + dE2
+        df_cc.loc[double & ~triple, 'initEnergy'] = E0
+        df_cc.loc[double & ~triple, 'comptAngle'] = get_compton_angle(dE1, dE2, E0)
     return df_cc.dropna(subset=['comptAngle'])
 
 
@@ -334,71 +316,59 @@ def get_unit_vector(x1, y1, z1, x2, y2, z2):
 # This is defined as proposed by Mundy and Herman (2011) https://aapm.onlinelibrary.wiley.com/doi/10.1118/1.3519873
 def get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref):
     threshold = k*np.abs(zref)*np.sin(2*theta)
-    #  definitions of the constant values
-    delta_x = x2 - x1
-    delta_y = y2 - y1
-    delta_z = z2 - z1
-    magnitude = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
-    nx = delta_x / magnitude
-    ny = delta_y / magnitude
-    nz = delta_z / magnitude
     # vectors and matrices
     r1 = np.array([x1, y1, z1])
-    n = np.array([nx, ny, nz])
+    n = get_unit_vector(x1, y1, z1, x2, y2, z2)
     #  calculations
-    a = (np.dot(r - r1, n))**2  # image volume
-    b = np.cos(theta)**2 * np.linalg.norm(r - r1, axis=3)**2  # cone
+    diff = r - r1  # broadcast → (Y, X, Z, 3)
+    # Cone equation terms
+    dot = np.sum(diff * n, axis=3)
+    norm_sq = np.sum(diff**2, axis=3)
+    a = dot**2
+    b = (np.cos(theta)**2) * norm_sq
     Strue = np.abs(b - a)  # solution matrix
-    S = Strue.copy()
-    S[Strue <= threshold] = 1  # intersection points
-    S[Strue > threshold] = 0  # non-intersection points
-    return  np.transpose(np.nonzero(S)), S
+    S = (Strue <= threshold).astype(np.float32) # Binary mask, 1 in intersection, 0 otherwise
+    ringPositions = np.argwhere(Strue <= threshold)
+    return  ringPositions, S
 
 # This function returns an image constructed by means of a simple, standard backprojection where
 # the sum of all ellipses are plotted altogether. It requires the same parameters as the functions above.
 def get_simple_backprojection(df, Xbins, Ybins, Zbins, r, k, zref, on='pos'):
     failed_events = []
-    Stot = np.zeros([Ybins, Xbins, Zbins])
+    Stot = np.zeros([Xbins, Ybins, Zbins])
     for i in range(len(df)):
-        if np.isnan(df['X'+on+'_1'].values[i]):
-            x1 = (df['X'+on+'_2'].values[i])
-            y1 = (df['Y'+on+'_2'].values[i])
-            z1 = (df['Z'+on+'_2'].values[i])
-            x2 = (df['X'+on+'_3'].values[i])
-            y2 = (df['Y'+on+'_3'].values[i])
-            z2 = (df['Z'+on+'_3'].values[i])
-            zref = zref + 24  # interlayer spacing 2.4 cm fixed
+        row = df.iloc[i]
+        if np.isnan(row['X'+on+'_1']):
+            x1, y1, z1 = row['X'+on+'_2'], row['Y'+on+'_2'], row['Z'+on+'_2']
+            x2, y2, z2 = row['X'+on+'_3'], row['Y'+on+'_3'], row['Z'+on+'_3']
+            zref_event = zref + 24  # Vertex is shifted by 24 mm because first hit is in second stage
         else:
-            x1 = (df['X'+on+'_1'].values[i])
-            y1 = (df['Y'+on+'_1'].values[i])
-            z1 = (df['Z'+on+'_1'].values[i])
-            if np.isnan(df['X'+on+'_2'].values[i]):
-                x2 = (df['X'+on+'_3'].values[i])
-                y2 = (df['Y'+on+'_3'].values[i])
-                z2 = (df['Z'+on+'_3'].values[i])
+            zref_event = zref  # normal case
+            x1, y1, z1 = row['X'+on+'_1'], row['Y'+on+'_1'], row['Z'+on+'_1']
+
+            if np.isnan(row['X'+on+'_2']):
+                x2, y2, z2 = row['X'+on+'_3'], row['Y'+on+'_3'], row['Z'+on+'_3']
             else:
-                x2 = (df['X'+on+'_2'].values[i])
-                y2 = (df['Y'+on+'_2'].values[i])
-                z2 = (df['Z'+on+'_2'].values[i])
-        theta = df['comptAngle'].values[i]
-        ringPos, S = get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref)
+                x2, y2, z2 = row['X'+on+'_2'], row['Y'+on+'_2'], row['Z'+on+'_2']
+        theta = row['comptAngle']
+        ringPos, S = get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref_event)
         Stot += S
         if ringPos.size == 0:
-            failed_events.append(df['EventID'].values[i])
+            failed_events.append(row['EventID'])
         #bar.update(i + 1)
     #bar.finish()
     #print("Completion time (s): ", time.time()-t0)
     df_reconstructed = df[~df['EventID'].isin(failed_events)]
-    print("N events out of FOV: ", len(failed_events))
+    # print("N events out of FOV: ", len(failed_events))
     return Stot, df_reconstructed
 
 # This function performs the first iteration of the stochastic origin ensamble from a dataframe df
 # The bins constitute the voxellisation of the image volume
-def get_init_state_SOE(df, Xbins, Ybins, Zbins, r, k, z1, z2, zref):
+def get_init_state_SOE(df, Xbins, Ybins, Zbins, r, k, zref, on='pos'):
     print("Performing first iteration of SOE...")
     df = df.reset_index(drop=True)
     t0 = time.time()
-    D = np.zeros([Ybins, Xbins, Zbins])
+    D = np.zeros([Xbins, Ybins, Zbins])
     cones = []
     old_positions = []
     discarded_rows = []
@@ -409,12 +379,21 @@ def get_init_state_SOE(df, Xbins, Ybins, Zbins, r, k, z1, z2, zref):
     bar.start()
     # First iteration of the SOE: a cone is calculated for each event
     for i in range(len(df)):
-        x1 = (df['Xcm_1'].values[i])
-        y1 = (df['Ycm_1'].values[i])
-        x2 = (df['Xcm_2'].values[i])
-        y2 = (df['Ycm_2'].values[i])
-        theta = df['comptAngle'].values[i]
-        cone = get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref)[0]  # get the nonzero positions of S
+        row = df.iloc[i]
+        if np.isnan(row['X'+on+'_1']):
+            x1, y1, z1 = row['X'+on+'_2'], row['Y'+on+'_2'], row['Z'+on+'_2']
+            x2, y2, z2 = row['X'+on+'_3'], row['Y'+on+'_3'], row['Z'+on+'_3']
+            zref_event = zref + 24  # Vertex is shifted by 24 mm because first hit is in second stage
+        else:
+            zref_event = zref  # normal case
+            x1, y1, z1 = row['X'+on+'_1'], row['Y'+on+'_1'], row['Z'+on+'_1']
+
+            if np.isnan(row['X'+on+'_2']):
+                x2, y2, z2 = row['X'+on+'_3'], row['Y'+on+'_3'], row['Z'+on+'_3']
+            else:
+                x2, y2, z2 = row['X'+on+'_2'], row['Y'+on+'_2'], row['Z'+on+'_2']
+        theta = row['comptAngle']
+        cone = get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref_event)[0]
         cones.append(cone)
         if cone.size == 0:
             # the cone is useless either because the cone doesn't intersect with FOV
@@ -439,11 +418,11 @@ def get_init_state_SOE(df, Xbins, Ybins, Zbins, r, k, z1, z2, zref):
 
 # This function performs the first iteration of the stochastic origin ensamble from a dataframe df
 # The bins constitute the voxellisation of the image volume
-def get_init_state_SOE_with_mask(df, Xbins, Ybins, Zbins, r, k, z1, z2, zref, mask):
+def get_init_state_SOE_with_mask(df, Xbins, Ybins, Zbins, r, k, zref, mask, on='pos'):
     print("Performing first iteration of SOE...")
     df = df.reset_index(drop=True)
     t0 = time.time()
-    D = np.zeros([Ybins, Xbins, Zbins])
+    D = np.zeros([Xbins, Ybins, Zbins])
     cones = []
     old_positions = []
     discarded_rows = []
@@ -454,12 +433,21 @@ def get_init_state_SOE_with_mask(df, Xbins, Ybins, Zbins, r, k, z1, z2, zref, ma
     bar.start()
     # First iteration of the SOE: a cone is calculated for each event
     for i in range(len(df)):
-        x1 = (df['Xcm_1'].values[i])
-        y1 = (df['Ycm_1'].values[i])
-        x2 = (df['Xcm_2'].values[i])
-        y2 = (df['Ycm_2'].values[i])
-        theta = df['comptAngle'].values[i]
-        init_cone = get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref)[0]  # get the nonzero positions of S
+        row = df.iloc[i]
+        if np.isnan(row['X'+on+'_1']):
+            x1, y1, z1 = row['X'+on+'_2'], row['Y'+on+'_2'], row['Z'+on+'_2']
+            x2, y2, z2 = row['X'+on+'_3'], row['Y'+on+'_3'], row['Z'+on+'_3']
+            zref_event = zref + 24  # Vertex is shifted by 24 mm because first hit is in second stage
+        else:
+            zref_event = zref  # normal case
+            x1, y1, z1 = row['X'+on+'_1'], row['Y'+on+'_1'], row['Z'+on+'_1']
+
+            if np.isnan(row['X'+on+'_2']):
+                x2, y2, z2 = row['X'+on+'_3'], row['Y'+on+'_3'], row['Z'+on+'_3']
+            else:
+                x2, y2, z2 = row['X'+on+'_2'], row['Y'+on+'_2'], row['Z'+on+'_2']
+        theta = row['comptAngle']
+        init_cone = get_conical_surface(x1, y1, z1, x2, y2, z2, theta, r, k, zref_event)[0]
         # Use the mask to get only the cone positions that lie within the mask
         x, y = init_cone[:, 0], init_cone[:, 1]
         valid_mask = mask[x, y] == 1
@@ -491,7 +479,7 @@ def get_init_state_SOE_with_mask(df, Xbins, Ybins, Zbins, r, k, z1, z2, zref, ma
 def reset_init_state_SOE(df, cones, Xbins, Ybins, Zbins):
     # print("Performing first iteration of SOE...")
     #  t0 = time.time()
-    D = np.zeros([Ybins, Xbins, Zbins])
+    D = np.zeros([Xbins, Ybins, Zbins])
     old_positions = []
     events = df['EventID'].unique()
     # bar = progressbar.ProgressBar(maxval=len(df), widgets=[progressbar.Bar('=', '[', ']'), ' ',
@@ -605,32 +593,9 @@ def get_fast_SOE(df, D, cones, old_positions, N_events, N_soe, percent_convergen
     # print("Completion time (s): ", time.time() - t0)
     return D, probabilities
 
-def get_conical_surface_with_threshold(x1, y1, z1, x2, y2, z2, theta, position_matrix, k):
-    threshold = k*np.sin(2*theta)
-    #  definitions of the constant values
-    delta_x = x2 - x1
-    delta_y = y2 - y1
-    delta_z = z2 - z1
-    magnitude = np.sqrt(delta_x ** 2 + delta_y ** 2 + delta_z ** 2)
-    nx = delta_x / magnitude
-    ny = delta_y / magnitude
-    nz = delta_z / magnitude
-    # vectors and matrices
-    r1 = np.array([x1, y1, z1])
-    n = np.array([nx, ny, nz])
-    r = position_matrix
-    #  calculations
-    a = (np.dot(r - r1, n))**2  # image volume
-    b = np.cos(theta)**2 * np.linalg.norm(r - r1, axis=3)**2  # cone
-    Strue = np.abs(b - a)  # solution matrix
-    S = Strue.copy()
-    S[Strue <= threshold] = 1  # intersection points
-    S[Strue > threshold] = 0  # non-intersection points
-    return np.transpose(np.nonzero(S)), S, Strue, threshold
-
 
 def get_SBP_from_cones(Xbins, Ybins, Zbins, cones):
-    Stot = np.zeros([Ybins, Xbins, Zbins])
+    Stot = np.zeros([Xbins, Ybins, Zbins])
     for cone in cones:
         for pos in cone:
             Stot[pos[0], pos[1], pos[2]] += 1
