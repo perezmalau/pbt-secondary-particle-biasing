@@ -7,11 +7,11 @@ Purpose: Execute the analysis and reconstruction of the Compton scattering data
 We define the true data to be CZT camera output having:
 - Ability to find coincident hits coming from the same gamma track
 - Perfect energy and spatial resolution
-- If drop_faulty is set to true, also the ability to drop backscatters
+- If drop_faulty is set to true, also the ability to drop backscatters (e.g. compt-phot-compt)
 
 The realistic camera output therefore has:
-- Coincident hits corresponding to the same event ID (but no track info)
-- Finite spatial resolution (500 micron pitch)
+- Coincident hits corresponding to the same event ID (but no individual track or particle info)
+- Finite spatial resolution (500 micron pitch, no depth resolution)
 - Discrimination from events producing more than one cluster in a single stage
 """
 from ComptCamFunctions import (get_true_information,
