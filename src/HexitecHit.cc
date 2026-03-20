@@ -42,7 +42,12 @@ HexitecHit::HexitecHit() : G4VHit(),
                            fParticleName(""),
                            fProcessName(""),
                            fInteractionPos(0),
-                           fEdiff(0.){
+                           fEdiff(0.),
+                           fLine(-1),
+                           fCol(-1),
+                           fEdep(0.) {
+    // fTrueAngle(0.),
+    // fTrueEnergy(0.){
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -59,6 +64,11 @@ HexitecHit::HexitecHit(const HexitecHit &right)
     fProcessName = right.fProcessName;
     fInteractionPos = right.fInteractionPos;
     fEdiff = right.fEdiff;
+    fLine = right.fLine;
+    fCol = right.fCol;
+    fEdep = right.fEdep;
+    // fTrueAngle = right.fTrueAngle;
+    // fTrueEnergy = right.fTrueEnergy;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -69,6 +79,11 @@ const HexitecHit &HexitecHit::operator=(const HexitecHit &right) {
     fParticleName = right.fParticleName;
     fInteractionPos = right.fInteractionPos;
     fEdiff = right.fEdiff;
+    fLine = right.fLine;
+    fCol = right.fCol;
+    fEdep = right.fEdep;
+    // fTrueAngle = right.fTrueAngle;
+    // fTrueEnergy = right.fTrueEnergy;
 
     return *this;
 }

@@ -53,7 +53,7 @@ public:
 
     // methods to handle data
     void Add(G4int copyNo, G4int trackID, const G4ThreeVector& intpos, G4double ediff,
-        G4String particle, G4String process);
+        G4String particle, G4String process, G4int line, G4int col, G4double enedep);  //, G4double true_angle, G4double true_energy);
 
     // get methods
     G4int GetCopyNo() const { return fCopyNo; }
@@ -62,6 +62,11 @@ public:
     G4String GetProcessName() const { return fProcessName; }
     G4ThreeVector GetInteractionPos() const { return fInteractionPos; }
     G4double GetEnergyDiff() const {return fEdiff; }
+    G4int GetLineNumber() const {return fLine; }
+    G4int GetColumnNumber() const {return fCol; }
+    G4double GetEnergyDeposit() const {return fEdep; }
+    // G4double GetTrueAngle() const {return fTrueAngle; }
+    // G4double GetTrueInitEnergy() const {return fTrueEnergy; }
 
 private:
     G4int           fCopyNo;
@@ -70,6 +75,11 @@ private:
     G4String        fProcessName;
     G4ThreeVector   fInteractionPos;
     G4double        fEdiff;
+    G4int           fLine;
+    G4int           fCol;
+    G4double        fEdep;
+    // G4double        fTrueAngle;
+    // G4double        fTrueEnergy;
 };
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -98,7 +108,7 @@ inline void HexitecHit::operator delete(void *hit)
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 inline void HexitecHit::Add(G4int copyNo, G4int trackID, const G4ThreeVector& intpos, G4double ediff,
-    G4String particle, G4String process)
+    G4String particle, G4String process, G4int line, G4int col, G4double enedep) //, G4double true_angle, G4double true_energy)
 {
     fCopyNo = copyNo;
     fTrackID = trackID;
@@ -106,6 +116,11 @@ inline void HexitecHit::Add(G4int copyNo, G4int trackID, const G4ThreeVector& in
     fProcessName = std::move(process);
     fInteractionPos = intpos;
     fEdiff = ediff;
+    fLine = line;
+    fCol = col;
+    fEdep = enedep;
+    // fTrueAngle = true_angle;
+    // fTrueEnergy = true_energy;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......

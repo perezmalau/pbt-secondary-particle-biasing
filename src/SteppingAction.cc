@@ -62,29 +62,10 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
         for (auto track: *secondaries) {
             G4double ekin = track->GetKineticEnergy();
             G4String particle = track->GetParticleDefinition()->GetParticleName();
-            G4int parentID = track->GetParentID();
-            if (ekin > 0.1 and parentID == 1 and particle == "gamma") {
-                //get current event ID
-                // G4RunManager *fRM = G4RunManager::GetRunManager();
-                // const G4Event *currentEvent = fRM->GetCurrentEvent();
-                // G4int eventID = currentEvent->GetEventID();
-                G4double weight = track->GetWeight();
+            if (ekin > 1 and ekin < 7 and particle == "gamma") {
                 G4double posX = track->GetPosition().getX();
-                G4double posY = track->GetPosition().getY();
-                G4double posZ = track->GetPosition().getZ();
-                analysisManager->FillH3(0, posX, posY, posZ, weight);
-                // if (ekin > 2.2 and ekin < 2.4) {
-                //     analysisManager->FillH3(1, posX, posY, posZ, weight);
-                // }
-                // if (ekin > 4.2 and ekin < 4.6) {
-                //     analysisManager->FillH3(2, posX, posY, posZ, weight);
-                // }
-                // if (ekin > 5.0 and ekin < 5.4) {
-                //     analysisManager->FillH3(3, posX, posY, posZ, weight);
-                // }
-                // if (ekin > 5.9 and ekin < 6.3) {
-                //     analysisManager->FillH3(4, posX, posY, posZ, weight);
-                // }
+                analysisManager->FillH1(1, posX, 1);
+
             }
         }
     }

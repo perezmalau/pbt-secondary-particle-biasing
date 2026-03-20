@@ -64,6 +64,8 @@ RunAction::RunAction()
     analysisManager->CreateNtupleDColumn("Zpos");
 	analysisManager->CreateNtupleDColumn("Etot");
 	analysisManager->CreateNtupleSColumn("Process");
+	// analysisManager->CreateNtupleDColumn("TrueAngle");
+	// analysisManager->CreateNtupleDColumn("TrueEnergy");
 	analysisManager->FinishNtuple();
 
   	// create Ntuple for ideal gamma info in scatterer2, id = 1
@@ -75,6 +77,8 @@ RunAction::RunAction()
 	analysisManager->CreateNtupleDColumn("Zpos");
 	analysisManager->CreateNtupleDColumn("Etot");
 	analysisManager->CreateNtupleSColumn("Process");
+	// analysisManager->CreateNtupleDColumn("TrueAngle");
+	// analysisManager->CreateNtupleDColumn("TrueEnergy");
 	analysisManager->FinishNtuple();
 
     // create Ntuple for ideal gamma info in scatterer3, id = 2
@@ -86,31 +90,33 @@ RunAction::RunAction()
 	analysisManager->CreateNtupleDColumn("Zpos");
 	analysisManager->CreateNtupleDColumn("Etot");
 	analysisManager->CreateNtupleSColumn("Process");
+	// analysisManager->CreateNtupleDColumn("TrueAngle");
+	// analysisManager->CreateNtupleDColumn("TrueEnergy");
     analysisManager->FinishNtuple();
 
-    // // create Ntuple for measured sensor1 hits, id = 3
-    // analysisManager->CreateNtuple("G4Sensor1Hits", "Sensor1 hits");
-    // analysisManager->CreateNtupleIColumn("EventID");
-    // analysisManager->CreateNtupleIColumn("Line");
-    // analysisManager->CreateNtupleIColumn("Col");
-    // analysisManager->CreateNtupleDColumn("Edep");
-    // analysisManager->FinishNtuple();
-    //
-    // // create Ntuple for measured sensor2 hits, id = 4
-    // analysisManager->CreateNtuple("G4Sensor2Hits", "Sensor2 hits");
-    // analysisManager->CreateNtupleIColumn("EventID");
-    // analysisManager->CreateNtupleIColumn("Line");
-    // analysisManager->CreateNtupleIColumn("Col");
-    // analysisManager->CreateNtupleDColumn("Edep");
-    // analysisManager->FinishNtuple();
-    //
-    // // create Ntuple for measured sensor3 hits, id = 5
-    // analysisManager->CreateNtuple("G4Sensor3Hits", "Sensor3 hits");
-    // analysisManager->CreateNtupleIColumn("EventID");
-    // analysisManager->CreateNtupleIColumn("Line");
-    // analysisManager->CreateNtupleIColumn("Col");
-    // analysisManager->CreateNtupleDColumn("Edep");
-    // analysisManager->FinishNtuple();
+    // create Ntuple for measured sensor1 hits, id = 3
+    analysisManager->CreateNtuple("G4Sensor1Hits", "Sensor1 hits");
+    analysisManager->CreateNtupleIColumn("EventID");
+    analysisManager->CreateNtupleIColumn("Line");
+    analysisManager->CreateNtupleIColumn("Col");
+    analysisManager->CreateNtupleDColumn("Edep");
+    analysisManager->FinishNtuple();
+
+    // create Ntuple for measured sensor2 hits, id = 4
+    analysisManager->CreateNtuple("G4Sensor2Hits", "Sensor2 hits");
+    analysisManager->CreateNtupleIColumn("EventID");
+    analysisManager->CreateNtupleIColumn("Line");
+    analysisManager->CreateNtupleIColumn("Col");
+    analysisManager->CreateNtupleDColumn("Edep");
+    analysisManager->FinishNtuple();
+
+    // create Ntuple for measured sensor3 hits, id = 5
+    analysisManager->CreateNtuple("G4Sensor3Hits", "Sensor3 hits");
+    analysisManager->CreateNtupleIColumn("EventID");
+    analysisManager->CreateNtupleIColumn("Line");
+    analysisManager->CreateNtupleIColumn("Col");
+    analysisManager->CreateNtupleDColumn("Edep");
+    analysisManager->FinishNtuple();
 
 	analysisManager->SetH1Activation(true);
 	analysisManager->SetH3Activation(true);
@@ -118,21 +124,9 @@ RunAction::RunAction()
 	// Bragg Peak
 	analysisManager->CreateH1("BraggPeak", "Proton 1D dose", 200, -100., 100.);
 
-	// Gamma counts
-	analysisManager->CreateH3("Total Gammas", "N Total Gammas", 100, -100, 100,
-	100, -100, 100, 100, -300, -100, "mm", "mm", "mm");
+	// Gamma distribution between 1 and 7 MeV
+	analysisManager->CreateH1("TotalGammas", "1D Gamma Distribution (1 - 7 MeV)", 200, -100, 100);
 
-	// analysisManager->CreateH3("2.2-2.4 MeV", "N Gammas 2.2-2.4 MeV", 100, -100, 100,
-	// 	100, -100, 100, 100, -300, -100, "mm", "mm", "mm");
-	//
-	// analysisManager->CreateH3("4.2-4.6 MeV", "N Gammas 4.2-4.6 MeV", 100, -100, 100,
-	// 	100, -100, 100, 100, -300, -100, "mm", "mm", "mm");
-	//
-	// analysisManager->CreateH3("5.0-5.4 MeV", "N Gammas 5.0-5.4 MeV", 100, -100, 100,
-	// 100, -100, 100, 100, -300, -100, "mm", "mm", "mm");
-	//
-	// analysisManager->CreateH3("5.9-6.3 MeV", "N Gammas 5.9-6.3 MeV", 100, -100, 100,
-	// 	100, -100, 100, 100, -300, -100, "mm", "mm", "mm");
 }
 
 
