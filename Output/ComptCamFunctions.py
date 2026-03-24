@@ -153,7 +153,7 @@ def get_real_dataframe(root_filename, tree_name):
 
 # Merge ideal information from all 3 stages in a single dataframe using only single hit events
 # Classifies coincidences as double, triple or faulty
-def get_true_information(root_filename, drop_faulty=True):
+def get_true_information(root_filename, drop_faulty=True, stages_hit=2):
     df1 = get_real_dataframe(root_filename, "G4S1TrueGammaInfo")
     df2 = get_real_dataframe(root_filename, "G4S2TrueGammaInfo")
     df3 = get_real_dataframe(root_filename, "G4S3TrueGammaInfo")
@@ -165,11 +165,10 @@ def get_true_information(root_filename, drop_faulty=True):
     merged = df1_f.merge(df2_f, on=['EventID', 'TrackID'], suffixes=('_1', '_2'), how='outer') \
         .merge(df3_f, on=['EventID', 'TrackID'], how='outer')
     merged.rename(columns={c: f'{c}_3' for c in df3_f.columns if c not in ['EventID', 'TrackID']}, inplace=True)
-    # Count how many stages fired for each (EventID, TrackID)
+    # Count how many stages hit for each (EventID, TrackID)
     merged['stages_hit'] = (merged[[c for c in merged.columns if 'Xpos' in c]].notna().sum(axis=1))
-
-    # Keep only events with 2 or more stages
-    merged = merged[merged['stages_hit'] >= 2].reset_index(drop=True)
+    # Filter by number of stages hit
+    merged = merged[merged['stages_hit'] >= stages_hit].reset_index(drop=True)
     merged['Classification'] = merged.apply(classify_event, axis=1)
 
     if drop_faulty:
@@ -190,7 +189,7 @@ def get_measured_dataframe(root_filename, tree_name):
 
 # Merge detector information from all 3 stages in a single dataframe
 # performing cluster filtering and converting pixel to coordinates
-def get_detector_information(rootfile, Npix=120, pitch=0.5):
+def get_detector_information(rootfile, Npix=120, pitch=0.5, stages_hit=2):
     df1 = get_measured_dataframe(rootfile, "G4Sensor1Hits")
     df2 = get_measured_dataframe(rootfile, "G4Sensor2Hits")
     df3 = get_measured_dataframe(rootfile, "G4Sensor3Hits")
@@ -205,8 +204,8 @@ def get_detector_information(rootfile, Npix=120, pitch=0.5):
     merged.rename(columns={c: f'{c}_3' for c in df3_filt.columns if c not in ['EventID']}, inplace=True)
     merged['stages_hit'] = (merged[[c for c in merged.columns if 'Xcm' in c]].notna().sum(axis=1))
 
-    # Keep only events with 2 or more stages
-    df_all = merged[merged['stages_hit'] >= 2].reset_index()
+    # Filter by number of stages hit
+    df_all = merged[merged['stages_hit'] >= stages_hit].reset_index()
     df_all['Xcm_1'], df_all['Ycm_1'] = pixel_to_coordinate(df_all['Xcm_1'], df_all['Ycm_1'], Npix, pitch)
     df_all['Xcm_2'], df_all['Ycm_2'] = pixel_to_coordinate(df_all['Xcm_2'], df_all['Ycm_2'], Npix, pitch)
     df_all['Xcm_3'], df_all['Ycm_3'] = pixel_to_coordinate(df_all['Xcm_3'], df_all['Ycm_3'], Npix, pitch)
