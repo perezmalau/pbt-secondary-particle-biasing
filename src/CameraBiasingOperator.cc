@@ -49,10 +49,14 @@ CameraBiasingOperator::ProposeFinalStateBiasingOperation(
     const G4Track* track,
     const G4BiasingProcessInterface* callingProcess)
 {
-    // Only bias proton inelastic — where prompt gammas are produced
+    // Only bias certain processes — where prompt gammas are produced
     if (callingProcess->GetWrappedProcess()->GetProcessName()
-        == "protonInelastic")
+    == "nCapture" or callingProcess->GetWrappedProcess()->GetProcessName()
+    == "neutronInelastic" or callingProcess->GetWrappedProcess()->GetProcessName()
+        == "eBrem") {
+        //"protonInelastic"
         return fBiasingOp;
+    }
 
     return nullptr;
 }

@@ -138,7 +138,7 @@ int main(int argc, char** argv)
   // -- and augment it with biasing facilities:
   G4GenericBiasingPhysics* biasingPhysics = new G4GenericBiasingPhysics();
   if (onOffBiasing == "on") {
-    biasingPhysics->PhysicsBias("proton");
+    biasingPhysics->PhysicsBias("neutron");
     physicsList->RegisterPhysics(biasingPhysics);
     G4cout << "      ********************************************************* " << G4endl;
     G4cout << "      ***** proton inelastic processes wrapped for biasing **** " << G4endl;

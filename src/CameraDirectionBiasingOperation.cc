@@ -59,12 +59,11 @@ CameraDirectionBiasingOperation::ApplyFinalStateBiasing(
         auto particleName = secondary->GetParticleDefinition()->GetParticleName();
 
         // Kill neutrons
-        if (particleName == "neutron")
-        {
-            secondary->SetTrackStatus(fStopAndKill);
-            continue;
-        }
-
+        // if (particleName == "neutron")
+        // {
+        //     secondary->SetTrackStatus(fStopAndKill);
+        //     continue;
+        // }
         // Bias gamma direction
         if (particleName == "gamma") {
             // Direction from production point toward camera center

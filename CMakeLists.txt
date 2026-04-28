@@ -41,8 +41,10 @@ target_link_libraries(biased_pbt ${Geant4_LIBRARIES})
 # because it relies on these scripts being in the current working directory.
 #
 set(SecondaryBiasing_SCRIPTS
-  run.mac
-  vis.mac
+        run.mac
+        vis.mac
+        run_bnct.mac
+        bnct_spectrum_song2025.mac
   )
 
 foreach(_script ${SecondaryBiasing_SCRIPTS})

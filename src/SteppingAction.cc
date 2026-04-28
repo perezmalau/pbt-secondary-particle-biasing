@@ -48,7 +48,7 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
 {
     G4String vol = step->GetPreStepPoint()->GetTouchable()->GetVolume()->GetName();
     auto analysisManager = G4AnalysisManager::Instance();
-    if (vol == "test.phys") {
+    if (vol == "Head") {
         // Get total energy deposit
         G4double edep = step->GetTotalEnergyDeposit()/MeV;
         if (edep > 0.) {
@@ -60,9 +60,9 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
         const std::vector<const G4Track *> *secondaries = step->GetSecondaryInCurrentStep();
         // loop through and send them to the analysis manager
         for (auto track: *secondaries) {
-            G4double ekin = track->GetKineticEnergy();
+            //G4double ekin = track->GetKineticEnergy();
             G4String particle = track->GetParticleDefinition()->GetParticleName();
-            if (ekin > 1 and ekin < 7 and particle == "gamma") {
+            if (particle == "gamma") {
                 G4double posX = track->GetPosition().getX();
                 analysisManager->FillH1(1, posX, 1);
 

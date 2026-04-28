@@ -29,6 +29,8 @@
 
 #include "G4Box.hh"
 #include "G4Sphere.hh"
+#include "G4Ellipsoid.hh"
+#include "G4SubtractionSolid.hh"
 #include "G4Colour.hh"
 #include "G4LogicalVolume.hh"
 #include "G4LogicalVolumeStore.hh"
@@ -45,7 +47,7 @@
 
 DetectorConstruction::DetectorConstruction()
     : fPixelSize(500 * um),
-      fSensorThickness(5 * mm),
+      fSensorThickness(2 * mm),
       fInterLayerSpacing(2.4 * cm),
       fPhantXYZ(20. * cm),
       fPhantCamDistance(20 * cm),
@@ -54,17 +56,6 @@ DetectorConstruction::DetectorConstruction()
     fCameraXY = fSensorSizeXY;
     fCameraZ = (3 * fSensorThickness) + (2 * fInterLayerSpacing);
 
-    // Compute and print correction factor here — master thread, always visible
-    // G4double halfDiagonal = std::sqrt(2.0) * (fCameraXY / 2);
-    // G4double halfAngle = std::atan(halfDiagonal / fPhantCamDistance);
-    // G4double fCameraSolidAngle = 2.0 * CLHEP::pi * (1.0 - std::cos(halfAngle));
-    // G4double correctionFactor = fCameraSolidAngle / (4.0 * CLHEP::pi);
-
-    // G4cout << "\n=== Biasing Parameters ===" << G4endl;
-    // G4cout << "Camera solid angle:        " << fCameraSolidAngle / sr << " sr" << G4endl;
-    // G4cout << "Correction factor (Ω/4π): " << correctionFactor << G4endl;
-    // G4cout << "Variance reduction:        " << 1.0 / correctionFactor << "x" << G4endl;
-    // G4cout << "==========================\n" << G4endl;
 }
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
@@ -75,8 +66,38 @@ DetectorConstruction::~DetectorConstruction() = default;
 
 G4VPhysicalVolume *DetectorConstruction::Construct() {
     // Materials:
-    G4Material *worldMaterial = G4NistManager::Instance()->FindOrBuildMaterial("G4_AIR");
-    G4Material *phantomMaterial = G4NistManager::Instance()->FindOrBuildMaterial("G4_WATER");
+    G4NistManager *nist = G4NistManager::Instance();
+    G4Material *worldMaterial = nist->FindOrBuildMaterial("G4_AIR");
+    // G4Material *phantomMaterial = nist->FindOrBuildMaterial("G4_WATER");
+    G4Material *skullMaterial = nist->FindOrBuildMaterial("G4_BONE_COMPACT_ICRU");
+    G4Material *skinMaterial = nist->FindOrBuildMaterial("G4_SKIN_ICRP");
+    G4Material* tissueEquivalentMaterial = new G4Material("TissueEquivalent", 1.0*g/cm3, 4);
+
+    tissueEquivalentMaterial->AddElement(nist->FindOrBuildElement("H"), 0.101);
+    tissueEquivalentMaterial->AddElement(nist->FindOrBuildElement("C"), 0.111);
+    tissueEquivalentMaterial->AddElement(nist->FindOrBuildElement("N"), 0.026);
+    tissueEquivalentMaterial->AddElement(nist->FindOrBuildElement("O"), 0.762);
+
+    // Set parts per million of boron
+    auto ppm_low = 25e-6;
+    auto ppm_high = 62.5e-6;
+
+    auto* B10 = new G4Isotope("Boron10", 5, 10, 10. * g / mole);
+    auto* elB10 = new G4Element("Boron10", "B10", 1);
+    elB10->AddIsotope(B10, 1.0); // Abundance fraction = 100%
+
+    auto* boronMaterial = new G4Material("boronMaterial", 2.37 * g / cm3, 1);
+    boronMaterial->AddElement(elB10, 1.0); // 100% Boron-10
+
+    G4Material* boronatedTissue = new G4Material("boronatedTissue", 1.0*g/cm3, 2);
+    boronatedTissue->AddMaterial(tissueEquivalentMaterial, 1.0 - ppm_low);
+    boronatedTissue->AddMaterial(boronMaterial, ppm_low);
+
+    G4Material* boronatedTumour = new G4Material("boronatedTumour", 1.0*g/cm3, 2);
+    boronatedTumour->AddMaterial(tissueEquivalentMaterial, 1.0 - ppm_high);
+    boronatedTumour->AddMaterial(boronMaterial, ppm_high);
+
+    // CZT
     auto *elCd = new G4Element("Cadmium", "Cd", 48., 112.414 * g / mole);
     auto *elZn = new G4Element("Zinc", "Zn", 30., 65.38 * g / mole);
     auto *elTe = new G4Element("Tellurium", "Te", 52., 127.6 * g / mole);
@@ -102,10 +123,53 @@ G4VPhysicalVolume *DetectorConstruction::Construct() {
     // -----------------------------------
     // -- Water phantom (biased volume)
     // -----------------------------------
-    auto *solidTest = new G4Box("test.solid", fPhantXYZ / 2, fPhantXYZ / 2, fPhantXYZ / 2);
-    auto *logicTest = new G4LogicalVolume(solidTest, phantomMaterial, "test.logical");
-    new G4PVPlacement(nullptr, G4ThreeVector(0, 0, -fPhantCamDistance),
-                      logicTest, "test.phys", logicWorld, false, 0);
+    // auto *solidTest = new G4Box("test.solid", fPhantXYZ / 2, fPhantXYZ / 2, fPhantXYZ / 2);
+    // auto *logicTest = new G4LogicalVolume(solidTest, phantomMaterial, "test.logical");
+    // new G4PVPlacement(nullptr, G4ThreeVector(0, 0, -fPhantCamDistance),
+    //                   logicTest, "test.phys", logicWorld, false, 0);
+
+    // -----------------------------------
+    // -- Snyder phantom (biased volume)
+    // -----------------------------------
+    G4double ax_brain = 6. *cm;
+    G4double by_brain = 9. *cm;
+    G4double cz_brain = 6.5 *cm;
+    G4double ax_skull = 6.8 *cm;
+    G4double by_skull = 9.8 *cm;
+    G4double cz_skull = 8.3 *cm;
+    G4double ax_head = 7.0 * cm;
+    G4double by_head = 10.0 * cm;
+    G4double cz_head = 8.50 * cm;
+    G4double tumour_radius = 1 *cm;
+    G4double tumour_posX = -3.5 *cm;
+
+    // Head
+    auto* headS = new G4Ellipsoid("Head", ax_head, by_head, cz_head);
+    auto *headLV = new G4LogicalVolume(headS, skinMaterial, "Head");
+    new G4PVPlacement(nullptr,G4ThreeVector(0, 0, -fPhantCamDistance),
+        headLV,"Head", logicWorld, false, 0);
+
+    // Skull
+    auto* craniumOut = new G4Ellipsoid("CraniumOut", ax_skull, by_skull, cz_skull);
+    auto* craniumIn = new G4Ellipsoid("CraniumIn", ax_brain, by_brain, cz_brain);
+    auto* skullS = new G4SubtractionSolid("Skull", craniumOut, craniumIn, nullptr,
+                                         G4ThreeVector(0.0, 0.0, 1. *cm));
+    auto *skullLV = new G4LogicalVolume(skullS, skullMaterial, "Skull");
+    new G4PVPlacement(nullptr,G4ThreeVector(0., 0., 0.),
+                      skullLV, "Skull",  headLV, false, 0);
+
+	// Brain
+    auto* brainS = new G4Ellipsoid("Brain", ax_brain, by_brain, cz_brain);
+    auto *brainLV = new G4LogicalVolume(brainS, boronatedTissue, "Brain");
+    new G4PVPlacement(nullptr, G4ThreeVector(0., 0., 1 *cm),
+        brainLV, "Brain", headLV, false, 0);
+
+    // Tumour
+    auto *targetS = new G4Sphere("Target", 0, tumour_radius,
+        0, 2*M_PI, 0, M_PI);
+    auto *targetLV = new G4LogicalVolume(targetS, boronatedTumour, "Target");
+    new G4PVPlacement(nullptr, G4ThreeVector(tumour_posX, 0 *cm, 0. *cm),
+        targetLV,"Target", brainLV, false, 0);
 
     // -----------------------------------
     // -- Compton camera
@@ -119,7 +183,6 @@ G4VPhysicalVolume *DetectorConstruction::Construct() {
     // Detector layers
     auto *layerS = new G4Box("Layer", fSensorSizeXY / 2, fSensorSizeXY / 2, fSensorThickness / 2);
     auto *layerLV = new G4LogicalVolume(layerS, worldMaterial, "Layer");
-
     new G4PVPlacement(nullptr,
                       G4ThreeVector(0, 0, -fInterLayerSpacing - fSensorThickness),
                       layerLV, "Layer1", cameraLV, true, 0);
@@ -128,6 +191,7 @@ G4VPhysicalVolume *DetectorConstruction::Construct() {
     new G4PVPlacement(nullptr,
                       G4ThreeVector(0, 0, fInterLayerSpacing + fSensorThickness),
                       layerLV, "Layer3", cameraLV, true, 2);
+
 
     // Pixel and row replicas
     auto *solidPixel = new G4Box("Pixel", fPixelSize / 2, fPixelSize / 2, fSensorThickness / 2);
@@ -141,12 +205,13 @@ G4VPhysicalVolume *DetectorConstruction::Construct() {
     auto *sensorS = new G4Box("Sensor", fSensorSizeXY / 2, fSensorSizeXY / 2, fSensorThickness / 2);
     auto *sensorLV = new G4LogicalVolume(sensorS, worldMaterial, "Sensor");
     new G4PVReplica("Row", logicRow, sensorLV, kYAxis, fNPixel, fPixelSize);
-    new G4PVPlacement(nullptr, G4ThreeVector(0, 0, 0), sensorLV, "Sensor", layerLV, false, 0);
+    new G4PVPlacement(nullptr, G4ThreeVector(0, 0, 0),
+        sensorLV, "Sensor", layerLV, false, 0);
 
 
-    auto *phantVisAtt = new G4VisAttributes(G4Colour(0.2, 0.6, 0.9));
-    phantVisAtt->SetVisibility(true);
-    logicTest->SetVisAttributes(phantVisAtt);
+    // auto *phantVisAtt = new G4VisAttributes(G4Colour(0.2, 0.6, 0.9));
+    // phantVisAtt->SetVisibility(true);
+    // logicTest->SetVisAttributes(phantVisAtt);
 
     auto worldVisAttr = new G4VisAttributes();
     worldVisAttr->SetVisibility(false);
@@ -167,7 +232,15 @@ void DetectorConstruction::ConstructSDandField() {
 
     // Biasing: force secondary gammas from the phantom toward the camera
     G4ThreeVector cameraCenter(0, 0, 0);
-    G4LogicalVolume *logicTest = G4LogicalVolumeStore::GetInstance()->GetVolume("test.logical");
+    //G4LogicalVolume *logicTest = G4LogicalVolumeStore::GetInstance()->GetVolume("test.logical");
+    G4LogicalVolume *logicHead = G4LogicalVolumeStore::GetInstance()->GetVolume("Head");
+    G4LogicalVolume *logicSkull = G4LogicalVolumeStore::GetInstance()->GetVolume("Skull");
+    G4LogicalVolume *logicBrain = G4LogicalVolumeStore::GetInstance()->GetVolume("Brain");
+    G4LogicalVolume *logicTarget = G4LogicalVolumeStore::GetInstance()->GetVolume("Target");
     auto *biasingOp = new CameraBiasingOperator(cameraCenter, fCameraXY/2);
-    biasingOp->AttachTo(logicTest);
+    // biasingOp->AttachTo(logicTest);
+    biasingOp->AttachTo(logicHead);
+    biasingOp->AttachTo(logicSkull);
+    biasingOp->AttachTo(logicBrain);
+    biasingOp->AttachTo(logicTarget);
 }
