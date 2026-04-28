@@ -1,0 +1,22 @@
+/run/initialize
+
+/gps/particle neutron
+/gps/position -15 0 -19 cm
+
+/gps/pos/type Beam
+/gps/pos/rot1 0 1 0
+/gps/pos/rot2 0 0 1
+
+/gps/pos/shape Circle
+/gps/pos/radius 2 cm
+/gps/ang/rot1 0 0 1
+/gps/ang/rot2 0 1 0
+/gps/ang/type beam1d
+
+/gps/ene/type User
+/gps/hist/type energy
+/control/execute bnct_spectrum_song2025.mac
+
+/analysis/setFileName ../Output/bnct_test_1E9
+/run/printProgress 10000000
+/run/beamOn 1000000000
