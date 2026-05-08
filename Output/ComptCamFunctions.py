@@ -1,5 +1,5 @@
 """
-Last modified on Fri 20 Mar 2026
+Last modified on Fri 8 May 2026
 @author: Maria Perez-Lara, University College London, University of Warwick
 
 Purpose: Read out 2 stage and 3 stage compton cam data,
@@ -391,7 +391,8 @@ def simple_back_projection(Xbins, Ybins, Zbins, cones):
 # Performs stochastic origin ensemble reconstruction based on cone information
 # Allows for incorporation of weighting using prior (i.e. gaussian or SBP)
 # If percent_convergence is provided, the function may stop when the movement probability is below this value
-def stochastic_origin_ensemble(cones, Xbins, Ybins, Zbins, N_events, N_soe, weights=None, percent_convergence=None):
+def stochastic_origin_ensemble(cones, Xbins, Ybins, Zbins, N_events, N_soe,
+                               weights=None, percent_convergence=None, alpha=0):
     t0 = time.time()
     probabilities = []
     all_SOEs = []
@@ -427,7 +428,7 @@ def stochastic_origin_ensemble(cones, Xbins, Ybins, Zbins, N_events, N_soe, weig
                 old_w = 1
                 new_w = 1
             if old_density > 0:
-                ratio = ((new_density + 1)/ old_density) * (new_w / old_w)
+                ratio = ((new_density + 1 + alpha)/ old_density + alpha) * (new_w / old_w)
             else:
                 ratio = 1
             # acceptance_probability = min(1, ratio)
