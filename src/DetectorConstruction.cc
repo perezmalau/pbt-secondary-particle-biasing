@@ -46,12 +46,12 @@
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
 DetectorConstruction::DetectorConstruction()
-    : fPixelSize(500 * um),
+    : fPixelSize(250 * um),
       fSensorThickness(2 * mm),
       fInterLayerSpacing(2.4 * cm),
       fPhantXYZ(20. * cm),
       fPhantCamDistance(20 * cm),
-      fNPixel(120) {
+      fNPixel(240) {
     fSensorSizeXY = fNPixel * fPixelSize;
     fCameraXY = fSensorSizeXY;
     fCameraZ = (3 * fSensorThickness) + (2 * fInterLayerSpacing);
