@@ -120,12 +120,20 @@ RunAction::RunAction()
 
 	analysisManager->SetH1Activation(true);
 	analysisManager->SetH3Activation(true);
+	analysisManager->CreateH3("Dose3D", "3D Dose Distribution",
+	70, -7.*cm, 7.*cm,
+	100, -10.*cm, 10.*cm,
+	85, -8.5*cm, 8.5*cm);
 
-	// Bragg Peak
-	analysisManager->CreateH1("BraggPeak", "Proton 1D dose", 200, -100., 100.);
+	analysisManager->CreateH3("Gamma478", "3D Distribution of 478 keV Gammas",
+		70, -7.*cm, 7.*cm,
+		100, -10.*cm, 10.*cm,
+		85, -8.5*cm, 8.5*cm);
 
-	// Gamma distribution between 1 and 7 MeV
-	analysisManager->CreateH1("TotalGammas", "1D Gamma Distribution (1 - 7 MeV)", 200, -100, 100);
+	analysisManager->CreateH3("Gamma2200", "3D Distribution of 2.2 MeV Gammas",
+		70, -7.*cm, 7.*cm,
+		100, -10.*cm, 10.*cm,
+		85, -8.5*cm, 8.5*cm);
 
 }
 

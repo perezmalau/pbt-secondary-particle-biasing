@@ -1,0 +1,21 @@
+# Build artifacts
+build/
+cmake-build-*/
+build/CMakeFiles/
+Output/*.root
+Output/biased
+Output/bnct_test_1E10
+Output/pt_test_120MeV_1E10
+CMakeCache.txt
+Makefile
+*.cmake
+
+# CLion settings
+.idea/
+
+# Executables and logs
+*.out
+*.o
+*.so
+*.a
+*.log

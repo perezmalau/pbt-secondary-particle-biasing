@@ -46,26 +46,33 @@ SteppingAction::~SteppingAction()
 
 void SteppingAction::UserSteppingAction(const G4Step* step)
 {
+    G4double phantCamDistance = 20*cm;
     G4String vol = step->GetPreStepPoint()->GetTouchable()->GetVolume()->GetName();
     auto analysisManager = G4AnalysisManager::Instance();
-    if (vol == "Head") {
+    if (vol == "Head" || vol == "Skull" || vol == "Brain" || vol == "Target") {
         // Get total energy deposit
         G4double edep = step->GetTotalEnergyDeposit()/MeV;
         if (edep > 0.) {
             G4ThreeVector pos = 0.5 * (step->GetPreStepPoint()->GetPosition() + step->GetPostStepPoint()->GetPosition());
-            analysisManager->FillH1(0, pos.x(), edep);
+            analysisManager->FillH3(0, pos.x(), pos.y(), pos.z() + phantCamDistance, edep);
         }
 
         // create a list of all secondaries created in this step
         const std::vector<const G4Track *> *secondaries = step->GetSecondaryInCurrentStep();
         // loop through and send them to the analysis manager
-        for (auto track: *secondaries) {
-            //G4double ekin = track->GetKineticEnergy();
-            G4String particle = track->GetParticleDefinition()->GetParticleName();
-            if (particle == "gamma") {
-                G4double posX = track->GetPosition().getX();
-                analysisManager->FillH1(1, posX, 1);
+        for (auto track : *secondaries) {
+            if (track->GetParticleDefinition()->GetParticleName() != "gamma") continue;
 
+            G4double ekin = track->GetKineticEnergy();
+            G4ThreeVector pos = track->GetPosition();
+            G4double x = pos.x();
+            G4double y = pos.y();
+            G4double z = pos.z() + phantCamDistance;
+
+            if (std::abs(ekin - 478.*keV) < 5.*keV) {
+                analysisManager->FillH3(1, x, y, z, 1);
+            } else if (std::abs(ekin - 2223.*keV) < 5.*keV) {
+                analysisManager->FillH3(2, x, y, z, 1);
             }
         }
     }
