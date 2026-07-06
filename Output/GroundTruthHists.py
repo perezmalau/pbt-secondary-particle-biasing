@@ -1,5 +1,5 @@
 """
-Last modified on Thu 2 Jul 2026
+Last modified on Mon 6 Jul 2026
 @author: Maria Perez-Lara, University College London, University of Warwick
 
 Purpose: Obtain dose and gamma production histograms for the ground truth data, which are saved in the root outputs.
@@ -23,13 +23,38 @@ def get_hists_bnct(rootfile):
 
     return dose_vals, gamma478_vals, gamma2200_vals
 
+# Sums histograms across multiple simulation files
+def get_summed_hists_bnct(base_path, n_files=50):
+    dose_sum = None
+    g478_sum = None
+    g2200_sum = None
+
+    for i in range(1, n_files + 1):
+        rootfile = f"{base_path}_{i}.root"
+        try:
+            d, g1, g2 = get_hists_bnct(rootfile)
+        except Exception as e:
+            print(f"Warning: could not read {rootfile} ({e}), skipping.")
+            continue
+
+        if dose_sum is None:
+            dose_sum = np.zeros_like(d)
+            g478_sum = np.zeros_like(g1)
+            g2200_sum = np.zeros_like(g2)
+
+        dose_sum += d
+        g478_sum += g1
+        g2200_sum += g2
+
+    return dose_sum, g478_sum, g2200_sum
+
 # Plots slices that pass through boronated tumour
 # Specify title of the figure, quantity (e.g. Dose or N gammas) and unit (e.g. a.u. or Gy)
 def plot_slices(arr, title, quantity, unit):
     f, ax = plt.subplots(1, 3, figsize=(12, 5))
     f.suptitle(title, fontsize=14, fontweight='bold')
     # Sagittal plane (YZ)
-    im1 = ax[0].imshow(arr[18], cmap='gnuplot', aspect='auto', extent=[-85, 85, -100, 100], vmin=0, vmax=np.max(arr))
+    im1 = ax[0].imshow(arr[16], cmap='gnuplot', aspect='auto', extent=[-85, 85, -100, 100], vmin=0, vmax=np.max(arr))
     ax[0].set_title("Sagittal plane", fontsize=12)
     ax[0].set_aspect('equal', adjustable='box')
     ax[0].set_xlabel("Z (mm)")
@@ -52,5 +77,8 @@ def plot_slices(arr, title, quantity, unit):
     ax[2].set_ylabel("Y (mm)")
     plt.show()
 
-d, g1, g2 = get_hists_bnct("bnct_test_1E7.root")
-plot_slices(d, "Dose distribution", "Dose", "Gy")
+base_path = "bnct_test_5E10/bnct_test_1E9"
+d, g1, g2 = get_summed_hists_bnct(base_path, n_files=50)
+plot_slices(d, "Total dose (5E10 total)", "Dose", "Gy")
+plot_slices(g1, "478 keV Gamma Distribution (5E10 total)", "N gammas", "a.u.")
+plot_slices(g2, "2.2 MeV Gamma Distribution (5E10 total)", "N gammas", "a.u.")
