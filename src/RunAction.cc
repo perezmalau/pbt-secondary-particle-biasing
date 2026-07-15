@@ -124,8 +124,17 @@ RunAction::RunAction()
 	// Bragg Peak
 	analysisManager->CreateH1("BraggPeak", "Proton 1D dose", 200, -100., 100.);
 
-	// Gamma distribution between 1 and 7 MeV
-	analysisManager->CreateH1("TotalGammas", "1D Gamma Distribution (1 - 7 MeV)", 200, -100, 100);
+	// Gamma distributions
+	analysisManager->CreateH2("TotalGammas", "2D Gamma Distribution (2 - 7 MeV)",
+		100, -100, 100, 50, -50, 50, "mm", "mm");
+	analysisManager->CreateH2("Gamma2MeV", "2D Gamma Distribution (2 - 2.4 MeV)",
+	100, -100, 100, 50, -100, 100, "mm", "mm");
+	analysisManager->CreateH2("Gamma4MeV", "2D Gamma Distribution (4.2 - 4.6 MeV)",
+	100, -100, 100, 50, -100, 100, "mm", "mm");
+	analysisManager->CreateH2("Gamma5MeV", "2D Gamma Distribution (5 - 5.4 MeV)",
+100, -100, 100, 50, -100, 100, "mm", "mm");
+	analysisManager->CreateH2("Gamma6MeV", "2D Gamma Distribution (5.9 - 6.3 MeV)",
+	100, -100, 100, 50, -100, 100, "mm", "mm");
 
 }
 
