@@ -40,6 +40,7 @@
 #include "G4SDManager.hh"
 #include "G4PVReplica.hh"
 #include "G4VisAttributes.hh"
+#include "G4UserLimits.hh"
 
 //....oooOO0OOooo........oooOO0OOooo........oooOO0OOooo........oooOO0OOooo......
 
@@ -106,6 +107,10 @@ G4VPhysicalVolume *DetectorConstruction::Construct() {
     auto *logicTest = new G4LogicalVolume(solidTest, phantomMaterial, "test.logical");
     new G4PVPlacement(nullptr, G4ThreeVector(0, 0, -fPhantCamDistance),
                       logicTest, "test.phys", logicWorld, false, 0);
+
+    // Set step limit in phantom
+    auto stepLimit = new G4UserLimits(1*mm);
+    logicTest->SetUserLimits(stepLimit);
 
     // -----------------------------------
     // -- Compton camera

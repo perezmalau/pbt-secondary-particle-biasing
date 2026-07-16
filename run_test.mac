@@ -1,3 +1,4 @@
+/tracking/verbose 2
 /run/initialize
 
 # Default settings:
@@ -11,5 +12,4 @@
 
 # Run settings:
 /analysis/setFileName test
-/run/printProgress 100000
-/run/beamOn 1000000
+/run/beamOn 1

@@ -35,6 +35,8 @@
 #include "DetectorConstruction.hh"
 #include "PrimaryGeneratorAction.hh"
 
+#include "G4StepLimiterPhysics.hh"
+
 #include "G4ScoringManager.hh"
 
 #include "G4GenericBiasingPhysics.hh"
@@ -134,6 +136,10 @@ int main(int argc, char** argv)
   //FTFP_BERT* physicsList = new FTFP_BERT;
   QGSP_BIC* physicsList = new QGSP_BIC;
   physicsList->ReplacePhysics(new G4EmStandardPhysics_option4());
+
+  physicsList->SetVerboseLevel(0);
+  physicsList->RegisterPhysics(new G4StepLimiterPhysics());
+  runManager->SetUserInitialization(physicsList);
 
   // -- and augment it with biasing facilities:
   G4GenericBiasingPhysics* biasingPhysics = new G4GenericBiasingPhysics();

@@ -1,5 +1,4 @@
 /run/initialize
-
 # Default settings:
 /gps/particle proton
 /gps/position -30 0 -20 cm
@@ -7,9 +6,167 @@
 /gps/pos/shape Circle
 /gps/pos/radius 2 mm
 /gps/direction 1 0 0
-/gps/energy 120 MeV
 
-# Run settings:
-/analysis/setFileName ../Output/biasing_test_1E6
-/run/printProgress 100000
-/run/beamOn 1000000
+/gps/energy 120 MeV
+/analysis/setFileName ../Output/pbt_120MeV_1E9_1
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_120MeV_1E9_2
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_120MeV_1E9_3
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_120MeV_1E9_4
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_120MeV_1E9_5
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_120MeV_1E9_6
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_120MeV_1E9_7
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_120MeV_1E9_8
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_120MeV_1E9_9
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_120MeV_1E9_10
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/gps/energy 121 MeV
+/analysis/setFileName ../Output/pbt_121MeV_1E9_1
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_121MeV_1E9_2
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_121MeV_1E9_3
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_121MeV_1E9_4
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_121MeV_1E9_5
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_121MeV_1E9_6
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_121MeV_1E9_7
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_121MeV_1E9_8
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_121MeV_1E9_9
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_121MeV_1E9_10
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/gps/energy 122 MeV
+/analysis/setFileName ../Output/pbt_122MeV_1E9_1
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_122MeV_1E9_2
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_122MeV_1E9_3
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_122MeV_1E9_4
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_122MeV_1E9_5
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_122MeV_1E9_6
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_122MeV_1E9_7
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_122MeV_1E9_8
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_122MeV_1E9_9
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_122MeV_1E9_10
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/gps/energy 123 MeV
+/analysis/setFileName ../Output/pbt_123MeV_1E9_1
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_123MeV_1E9_2
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_123MeV_1E9_3
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_123MeV_1E9_4
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_123MeV_1E9_5
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_123MeV_1E9_6
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_123MeV_1E9_7
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_123MeV_1E9_8
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_123MeV_1E9_9
+/run/printProgress 100000000
+/run/beamOn 1000000000
+
+/analysis/setFileName ../Output/pbt_123MeV_1E9_10
+/run/printProgress 100000000
+/run/beamOn 1000000000

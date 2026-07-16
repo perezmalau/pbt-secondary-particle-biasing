@@ -43,6 +43,7 @@ target_link_libraries(biased_pbt ${Geant4_LIBRARIES})
 set(SecondaryBiasing_SCRIPTS
   run.mac
   vis.mac
+  run_test.mac
   )
 
 foreach(_script ${SecondaryBiasing_SCRIPTS})
