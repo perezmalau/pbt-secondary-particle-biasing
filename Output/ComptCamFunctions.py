@@ -13,6 +13,7 @@ import random
 import time
 import uproot4
 from sklearn.cluster import DBSCAN
+from scipy.optimize import curve_fit
 # import sys
 
 # ------------------------------------------------------
@@ -212,6 +213,28 @@ def get_detector_information(rootfile, Npix=120, pitch=0.5, stages_hit=2, pixlim
     return df_all.drop(['stages_hit'], axis=1)
 
 # ------------------------------------------------------
+# ------------ GAMMA FALLOFF FUNCTIONS ----------------
+# ------------------------------------------------------
+
+def sigmoid(x, A, k, x0, C):  # we want to find x0
+    return A / (1 + np.exp(-k * (x - x0))) + C
+
+def get_range_sigmoid(x, y, theo_range=1.34, window1=30., window2=30.):
+    mask = (x >= theo_range-window1) & (x <= theo_range+window2)
+    x_fit = x[mask]
+    y_fit = y[mask]
+    # Fit
+    try:
+        init_A = int(np.max(y) - np.min(y))
+        init_C = int(np.min(y))
+        popt, pcov = curve_fit(sigmoid, x_fit, y_fit, p0=[init_A, 1, theo_range, init_C], maxfev=5000)
+        x0 = popt[2]
+        x0_err = np.sqrt(pcov[2, 2])
+    except(RuntimeError, ValueError):
+        return np.nan, np.nan
+    return x0, x0_err
+
+# ------------------------------------------------------
 # ------------ RECONSTRUCTION FUNCTIONS ----------------
 # ------------------------------------------------------
 
@@ -392,7 +415,7 @@ def simple_back_projection(Xbins, Ybins, Zbins, cones):
 # Allows for incorporation of weighting using prior (i.e. gaussian or SBP)
 # If percent_convergence is provided, the function may stop when the movement probability is below this value
 def stochastic_origin_ensemble(cones, Xbins, Ybins, Zbins, N_events, N_soe,
-                               weights=None, percent_convergence=None, alpha=0):
+                               weights=None, percent_convergence=None, alpha=1):
     t0 = time.time()
     probabilities = []
     all_SOEs = []
@@ -428,7 +451,7 @@ def stochastic_origin_ensemble(cones, Xbins, Ybins, Zbins, N_events, N_soe,
                 old_w = 1
                 new_w = 1
             if old_density > 0:
-                ratio = ((new_density + 1 + alpha)/ old_density + alpha) * (new_w / old_w)
+                ratio = ((new_density + alpha)/ old_density -1 + alpha) * (new_w / old_w)
             else:
                 ratio = 1
             # acceptance_probability = min(1, ratio)
@@ -456,4 +479,4 @@ def stochastic_origin_ensemble(cones, Xbins, Ybins, Zbins, N_events, N_soe,
     bar.finish()
 
     print(f"Completion time {time.time() - t0:.2f} s")
-    return all_SOEs, probabilities
+    return all_SOEs #, probabilities
