@@ -235,6 +235,88 @@ def get_range_sigmoid(x, y, theo_range=1.34, window1=30., window2=30.):
     return x0, x0_err
 
 # ------------------------------------------------------
+# -------------- HISTOGRAM FUNCTIONS -------------------
+# ------------------------------------------------------
+
+def get_hist_data(rootfile, hist_names):
+    """Reads to_numpy() output for each named histogram in one file."""
+    file = uproot4.open(rootfile)
+    data = {}
+    for name in hist_names:
+        h = file[name]
+        data[name] = h.to_numpy()  # (values, edges...) tuple
+    return data
+
+def merge_hists(base_path, hist_names, n_files):
+    """Sums each named histogram across n_files, keeping the first file's edges."""
+    summed = {}   # name -> [values_sum, edge1, edge2, ...]
+
+    for i in range(1, n_files + 1):
+        rootfile = f"{base_path}_{i}.root"
+        try:
+            data = get_hist_data(rootfile, hist_names)
+        except Exception as e:
+            print(f"Warning: could not read {rootfile} ({e}), skipping.")
+            continue
+
+        for name, tup in data.items():
+            vals, *edges = tup
+            if name not in summed:
+                summed[name] = [np.zeros_like(vals), *edges]  # init with edges from first file
+            summed[name][0] += vals
+
+    return summed
+
+def get_comptcam_data(base_path,  n_files, low_energy=2, high_energy=7):
+    """Reads ComptCam data from all files into a single dataframe."""
+    all_ideal_dfs = []
+    all_realistic_dfs = []
+    n_read = 0
+    for i in range(1, n_files + 1):
+        rootfile = f"{base_path}_{i}.root"
+        try:
+            # ------- Ideal data -------
+            df_true = get_true_information(rootfile, drop_faulty=True, stages_hit=3)
+            df_true_cc = get_compton_scatters(df_true, on='pos').sort_values(by='EventID')
+            df_true_ene = df_true_cc[(df_true_cc['initEnergy'] < high_energy) & (df_true_cc['initEnergy'] > low_energy)]
+            all_ideal_dfs.append(df_true_ene)
+
+            # ------- Realistic data -------
+            df_measured = get_detector_information(rootfile, Npix=120, pitch=0.5, stages_hit=3, pixlimit=5)
+            df_measured['Zcm_1'] = 2.5
+            df_measured['Zcm_2'] = 31.5
+            df_measured['Zcm_3'] = 60.5
+            df_measured_cc = get_compton_scatters(df_measured, on='cm').sort_values(by='EventID')
+            df_measured_ene = df_measured_cc[(df_measured_cc['initEnergy'] < high_energy) & (df_measured_cc['initEnergy'] > low_energy)]
+            all_realistic_dfs.append(df_measured_ene)
+            n_read += 1
+        except Exception as e:
+            print(f"Warning: could not read ComptCam data from {rootfile} ({e}), skipping.")
+            continue
+
+    print(f"  Merged ComptCam data from {n_read}/{n_files} files.")
+    combined_df_ideal = pd.concat(all_ideal_dfs, ignore_index=True) if all_ideal_dfs else pd.DataFrame()
+    combined_df_realistic = pd.concat(all_realistic_dfs, ignore_index=True) if all_realistic_dfs else pd.DataFrame()
+
+    return combined_df_ideal, combined_df_realistic
+
+def save_hists(summed, out_file):
+    """Writes summed histograms to a new root file using uproot4's write support."""
+    with uproot4.recreate(out_file) as f:
+        for name, tup in summed.items():
+            vals, *edges = tup
+            # (values, edges...) matches np.histogram / np.histogram2d convention,
+            # which uproot4 recognizes and writes as TH1D/TH2D.
+            f[name] = tuple([vals, *edges])
+    print(f"  Wrote {len(summed)} histograms to {out_file}")
+
+def save_comptcam_data(df_ideal, df_realistic, out_file):
+    """Writes ComptCam data to a new csv file."""
+    df_ideal.to_csv("idealData_" + out_file, index=False)
+    df_realistic.to_csv("realData_" + out_file, index=False)
+    print(f"  Wrote ComptCam data to {out_file}")
+
+# ------------------------------------------------------
 # ------------ RECONSTRUCTION FUNCTIONS ----------------
 # ------------------------------------------------------
 
@@ -480,3 +562,24 @@ def stochastic_origin_ensemble(cones, Xbins, Ybins, Zbins, N_events, N_soe,
 
     print(f"Completion time {time.time() - t0:.2f} s")
     return all_SOEs #, probabilities
+
+
+# Performs the SOE n_reps times to obtain the mean SOE each time, and returns the median of the means
+def SOE_median_of_means(cones, Xbins, Ybins, Zbins, n_reps,
+                        n_evts, n_soe, weights=None,
+                        percent_convergence=None, alpha=1):
+    all_chains = []
+    for i in range(n_reps):
+        SOE_chain = stochastic_origin_ensemble(cones,
+                                               Xbins, Ybins, Zbins,
+                                               N_events=n_evts,
+                                               N_soe=n_soe,
+                                               weights=weights,
+                                               percent_convergence=percent_convergence,
+                                               alpha=alpha
+                                               )
+        SOE = np.mean(SOE_chain, axis=0) # or to look at the last one only, use SOE_chain[-1]
+        all_chains.append(SOE)
+
+    MoM_SOE = np.median(all_chains, axis=0)
+    return MoM_SOE
